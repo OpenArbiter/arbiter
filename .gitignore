@@ -10,6 +10,7 @@ coverage.out
 # Secrets
 .env
 .env.local
+*.pem
 
 # IDE
 .idea/
