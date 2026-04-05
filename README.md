@@ -74,6 +74,20 @@ gates:
 
 When no config file is present, sensible defaults are used. Config is always read from the **base branch**, not the PR branch.
 
+## GitHub Plans
+
+Arbiter works on **all GitHub plans**, including free. No paid features are required.
+
+| Feature | Free Plan | Paid Plan (Pro/Team/Enterprise) |
+|---|---|---|
+| Check runs on PRs | Yes — Arbiter shows pass/fail on every PR | Yes |
+| Decision visibility | Yes — developers see the result before merging | Yes |
+| **Merge enforcement** | No — developers must check manually | Yes — set `arbiter/trust` as a required status check via branch protection |
+| Webhooks | Yes | Yes |
+| GitHub App installation | Yes | Yes |
+
+On free plans, Arbiter acts as an **advisory tool** — the `arbiter/trust` check run is visible on every PR, but merging isn't blocked if it fails. On paid plans, you can enforce it by adding `arbiter/trust` as a required status check in branch protection rules.
+
 ## Project Structure
 
 ```
