@@ -297,7 +297,7 @@ func runScenarios(_ context.Context, name string) {
 		} else if result.Decision.Outcome == model.DecisionNeedsAction {
 			outcomeIcon = "⚠"
 		}
-		fmt.Printf("  %s Decision: %s\n", outcomeIcon, result.Decision.Outcome)
+		fmt.Printf("  %s Decision: %s (confidence: %.0f%%)\n", outcomeIcon, result.Decision.Outcome, result.Confidence*100)
 		fmt.Printf("    Reason:  %s\n", result.Decision.ReasonCode)
 		fmt.Printf("    Summary: %s\n", result.Decision.Summary)
 
@@ -430,7 +430,7 @@ func runLive(ctx context.Context) {
 
 	fmt.Println("\n━━━ Decision ━━━")
 	fmt.Printf("  ID:      %s\n", decision.DecisionID)
-	fmt.Printf("  Outcome: %s\n", decision.Outcome)
+	fmt.Printf("  Outcome: %s (confidence: %.0f%%)\n", decision.Outcome, result.Confidence*100)
 	fmt.Printf("  Reason:  %s\n", decision.ReasonCode)
 	fmt.Printf("  Summary: %s\n", decision.Summary)
 

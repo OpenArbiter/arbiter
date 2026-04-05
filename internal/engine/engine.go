@@ -41,6 +41,7 @@ const (
 type EvalResult struct {
 	Decision    model.Decision `json:"decision"`
 	GateResults []GateResult   `json:"gate_results"`
+	Confidence  float64        `json:"confidence"` // 0.0–1.0, internal quality signal
 }
 
 // Evaluate runs all gates against the given context and produces a Decision.
@@ -82,9 +83,11 @@ func Evaluate(ctx *EvalContext) EvalResult {
 	}
 
 	decision := buildDecision(ctx, results)
+	confidence := calculateConfidence(ctx, results)
 	return EvalResult{
 		Decision:    decision,
 		GateResults: results,
+		Confidence:  confidence,
 	}
 }
 
@@ -276,6 +279,90 @@ func buildDecision(ctx *EvalContext, results []GateResult) model.Decision {
 		LinkedEvidenceIDs:  linkedEvIDs,
 		LinkedChallengeIDs: linkedChIDs,
 	}
+}
+
+// calculateConfidence produces a 0.0–1.0 score reflecting how much evidence
+// supports the decision. This is an internal quality signal — it does NOT
+// affect the merge outcome. Higher confidence means more/better evidence.
+//
+// Factors:
+//   - Evidence volume: more evidence types covered → higher confidence
+//   - Evidence quality: high-confidence evidence → higher score
+//   - Gate coverage: fewer skipped gates → higher confidence
+//   - Challenge resolution: resolved challenges add confidence, open ones reduce it
+func calculateConfidence(ctx *EvalContext, results []GateResult) float64 {
+	if len(ctx.Evidence) == 0 && len(ctx.Challenges) == 0 {
+		return 0.0
+	}
+
+	score := 0.0
+	weights := 0.0
+
+	// Factor 1: Evidence coverage (0–0.4)
+	// How many distinct evidence types do we have?
+	evidenceTypes := make(map[model.EvidenceType]bool)
+	for i := range ctx.Evidence {
+		evidenceTypes[ctx.Evidence[i].EvidenceType] = true
+	}
+	typeCoverage := float64(len(evidenceTypes)) / 5.0 // 5 common types is "full coverage"
+	if typeCoverage > 1.0 {
+		typeCoverage = 1.0
+	}
+	score += typeCoverage * 0.4
+	weights += 0.4
+
+	// Factor 2: Evidence quality (0–0.3)
+	// Proportion of high-confidence passing evidence
+	if len(ctx.Evidence) > 0 {
+		highConfPassing := 0
+		for i := range ctx.Evidence {
+			if ctx.Evidence[i].Result == model.EvidencePass && ctx.Evidence[i].Confidence == model.ConfidenceHigh {
+				highConfPassing++
+			}
+		}
+		qualityRatio := float64(highConfPassing) / float64(len(ctx.Evidence))
+		score += qualityRatio * 0.3
+	}
+	weights += 0.3
+
+	// Factor 3: Gate coverage (0–0.2)
+	// Fewer skipped gates = more thorough evaluation
+	if len(results) > 0 {
+		evaluated := 0
+		for _, r := range results {
+			if r.Status != GateSkipped {
+				evaluated++
+			}
+		}
+		gateRatio := float64(evaluated) / float64(len(results))
+		score += gateRatio * 0.2
+	}
+	weights += 0.2
+
+	// Factor 4: Challenge resolution (0–0.1)
+	// No challenges or all resolved = full score. Open challenges reduce it.
+	if len(ctx.Challenges) == 0 {
+		score += 0.1
+	} else {
+		openCount := 0
+		for i := range ctx.Challenges {
+			if ctx.Challenges[i].Status == model.ChallengeOpen {
+				openCount++
+			}
+		}
+		resolvedRatio := 1.0 - float64(openCount)/float64(len(ctx.Challenges))
+		score += resolvedRatio * 0.1
+	}
+	weights += 0.1
+
+	if weights == 0 {
+		return 0.0
+	}
+
+	// Normalize to 0.0–1.0
+	confidence := score / weights
+	// Round to 2 decimal places
+	return float64(int(confidence*100)) / 100.0
 }
 
 func pickReasonCode(failedGates []string) model.ReasonCode {

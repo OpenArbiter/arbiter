@@ -717,3 +717,108 @@ func TestEdge_AllGatesReturnResults(t *testing.T) {
 		}
 	}
 }
+
+// =============================================================================
+// Confidence scoring
+// =============================================================================
+
+func TestConfidence_HighWithGoodEvidence(t *testing.T) {
+	ctx := defaultCtx()
+	ctx.Evidence = []model.Evidence{
+		makeEvidence("ev-1", model.EvidenceBuildCheck, model.EvidencePass),
+		makeEvidence("ev-2", model.EvidenceTestSuite, model.EvidencePass),
+		makeEvidence("ev-3", model.EvidenceSecurityScan, model.EvidencePass),
+	}
+
+	result := Evaluate(&ctx)
+	if result.Confidence < 0.7 {
+		t.Errorf("confidence = %.2f, want >= 0.70 (good evidence)", result.Confidence)
+	}
+}
+
+func TestConfidence_ZeroWithNoEvidence(t *testing.T) {
+	ctx := defaultCtx()
+	ctx.Evidence = nil
+	ctx.Challenges = nil
+
+	result := Evaluate(&ctx)
+	if result.Confidence != 0.0 {
+		t.Errorf("confidence = %.2f, want 0.00 (no evidence)", result.Confidence)
+	}
+}
+
+func TestConfidence_LowerWithSkippedGates(t *testing.T) {
+	ctxFull := defaultCtx()
+	ctxFull.Evidence = []model.Evidence{
+		makeEvidence("ev-1", model.EvidenceBuildCheck, model.EvidencePass),
+		makeEvidence("ev-2", model.EvidenceTestSuite, model.EvidencePass),
+	}
+
+	ctxSkipped := defaultCtx()
+	ctxSkipped.Evidence = ctxFull.Evidence
+	ctxSkipped.Config.Gates.Policy.Mode = config.GateSkip
+	ctxSkipped.Config.Gates.Challenges.Mode = config.GateSkip
+	ctxSkipped.Config.Gates.Scope.Mode = config.GateSkip
+
+	full := Evaluate(&ctxFull)
+	skipped := Evaluate(&ctxSkipped)
+
+	if skipped.Confidence >= full.Confidence {
+		t.Errorf("skipped confidence (%.2f) should be less than full (%.2f)", skipped.Confidence, full.Confidence)
+	}
+}
+
+func TestConfidence_ReducedByOpenChallenges(t *testing.T) {
+	ctxClean := defaultCtx()
+	ctxClean.Evidence = []model.Evidence{
+		makeEvidence("ev-1", model.EvidenceBuildCheck, model.EvidencePass),
+		makeEvidence("ev-2", model.EvidenceTestSuite, model.EvidencePass),
+	}
+
+	ctxChallenged := defaultCtx()
+	ctxChallenged.Evidence = ctxClean.Evidence
+	ctxChallenged.Challenges = []model.Challenge{
+		makeChallenge("ch-1", model.SeverityLow, model.ChallengeOpen),
+	}
+
+	clean := Evaluate(&ctxClean)
+	challenged := Evaluate(&ctxChallenged)
+
+	if challenged.Confidence >= clean.Confidence {
+		t.Errorf("challenged confidence (%.2f) should be less than clean (%.2f)", challenged.Confidence, clean.Confidence)
+	}
+}
+
+func TestConfidence_ResolvedChallengesRestoreConfidence(t *testing.T) {
+	ctx := defaultCtx()
+	ctx.Evidence = []model.Evidence{
+		makeEvidence("ev-1", model.EvidenceBuildCheck, model.EvidencePass),
+		makeEvidence("ev-2", model.EvidenceTestSuite, model.EvidencePass),
+	}
+	ctx.Challenges = []model.Challenge{
+		makeChallenge("ch-1", model.SeverityHigh, model.ChallengeResolved),
+	}
+
+	result := Evaluate(&ctx)
+	if result.Confidence < 0.5 {
+		t.Errorf("confidence = %.2f, want >= 0.50 (resolved challenges shouldn't hurt)", result.Confidence)
+	}
+}
+
+func TestConfidence_BoundedZeroToOne(t *testing.T) {
+	// Lots of evidence
+	ctx := defaultCtx()
+	ctx.Evidence = []model.Evidence{
+		makeEvidence("ev-1", model.EvidenceBuildCheck, model.EvidencePass),
+		makeEvidence("ev-2", model.EvidenceTestSuite, model.EvidencePass),
+		makeEvidence("ev-3", model.EvidenceSecurityScan, model.EvidencePass),
+		makeEvidence("ev-4", model.EvidencePolicyCheck, model.EvidencePass),
+		makeEvidence("ev-5", model.EvidenceBenchmarkCheck, model.EvidencePass),
+		makeEvidence("ev-6", model.EvidenceScopeMatch, model.EvidencePass),
+	}
+
+	result := Evaluate(&ctx)
+	if result.Confidence < 0.0 || result.Confidence > 1.0 {
+		t.Errorf("confidence = %.2f, should be in [0.0, 1.0]", result.Confidence)
+	}
+}
