@@ -21,11 +21,13 @@ func testQueue(t *testing.T) *Queue {
 	if err != nil {
 		t.Fatalf("creating queue: %v", err)
 	}
+	// Use a unique queue key per test to avoid cross-test interference
+	q.queueKey = "arbiter:test:" + t.Name()
 	t.Cleanup(func() {
 		q.client.Del(context.Background(), q.queueKey)
+		q.client.Del(context.Background(), deadLetterKey+":"+t.Name())
 		q.Close()
 	})
-	// Clear any leftover jobs
 	q.client.Del(context.Background(), q.queueKey)
 	return q
 }
