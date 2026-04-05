@@ -210,7 +210,7 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 	}
 
 	// Run initial evaluation (likely insufficient evidence at this point)
-	return p.evaluateProposal(ctx, proposalID, installID, repo.Owner.Login, repo.Name, pr.Head.SHA, pr.Base.Ref)
+	return p.evaluateProposal(ctx, proposalID, installID, repo.Owner.Login, repo.Name, pr.Head.SHA, pr.Base.Ref, pr.Number)
 }
 
 func (p *Processor) handlePRClosed(ctx context.Context, job *queue.Job) error {
@@ -341,13 +341,14 @@ func (p *Processor) handleCheckRunCompleted(ctx context.Context, job *queue.Job)
 	}
 
 	// Re-evaluate the proposal with new evidence
-	// Extract repo info from the proposal's context
 	repo := event.Repository
+	prNum := 0
+	_, _ = fmt.Sscanf(matchedProposal.ChangeRef.ExternalID, "%d", &prNum)
 	return p.evaluateProposal(ctx, matchedProposal.ProposalID, installID,
-		repo.Owner.Login, repo.Name, cr.HeadSHA, "")
+		repo.Owner.Login, repo.Name, cr.HeadSHA, "", prNum)
 }
 
-func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, installID int64, owner, repo, headSHA, baseRef string) error {
+func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, installID int64, owner, repo, headSHA, baseRef string, prNumber int) error {
 	proposal, err := p.store.GetProposal(ctx, proposalID)
 	if err != nil {
 		return fmt.Errorf("getting proposal: %w", err)
@@ -427,7 +428,22 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 		"proposal_id", proposalID,
 		"outcome", decision.Outcome,
 		"reason", decision.ReasonCode,
+		"confidence", result.Confidence,
 	)
+
+	// Execute configured actions
+	if prNumber > 0 {
+		actCtx := &ActionContext{
+			InstallationID: installID,
+			Owner:          owner,
+			Repo:           repo,
+			PRNumber:       prNumber,
+			HeadSHA:        headSHA,
+			Decision:       decision,
+			Confidence:     result.Confidence,
+		}
+		p.client.ExecuteActions(ctx, actCtx, cfg.Actions)
+	}
 
 	return nil
 }

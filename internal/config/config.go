@@ -24,10 +24,50 @@ func (m GateMode) Valid() bool {
 	return false
 }
 
+// ActionType identifies what an action does.
+type ActionType string
+
+const (
+	ActionComment   ActionType = "comment"
+	ActionLabel     ActionType = "label"
+	ActionAutoMerge ActionType = "auto_merge"
+	ActionClose     ActionType = "close"
+	ActionWebhook   ActionType = "webhook"
+	ActionAssign    ActionType = "assign"
+)
+
+func (a ActionType) Valid() bool {
+	switch a {
+	case ActionComment, ActionLabel, ActionAutoMerge, ActionClose, ActionWebhook, ActionAssign:
+		return true
+	}
+	return false
+}
+
+// Action defines a single action to execute when a decision is made.
+type Action struct {
+	Type    ActionType        `yaml:"type"`
+	Body    string            `yaml:"body,omitempty"`    // comment body (supports {{outcome}}, {{summary}}, {{reason}})
+	Add     string            `yaml:"add,omitempty"`     // label to add
+	Remove  string            `yaml:"remove,omitempty"`  // label to remove
+	Method  string            `yaml:"method,omitempty"`  // merge method: squash, rebase, merge
+	URL     string            `yaml:"url,omitempty"`     // webhook URL
+	Headers map[string]string `yaml:"headers,omitempty"` // webhook headers
+	Users   []string          `yaml:"users,omitempty"`   // users to assign
+}
+
+// ActionsConfig defines actions triggered by decision outcomes.
+type ActionsConfig struct {
+	OnAccepted    []Action `yaml:"on_accepted"`
+	OnRejected    []Action `yaml:"on_rejected"`
+	OnNeedsAction []Action `yaml:"on_needs_action"`
+}
+
 // Config represents the parsed .arbiter.yml configuration.
 type Config struct {
 	Gates    GatesConfig    `yaml:"gates"`
 	Evidence EvidenceConfig `yaml:"evidence"`
+	Actions  ActionsConfig  `yaml:"actions"`
 }
 
 // GatesConfig controls behavior of each evaluation gate.
@@ -154,6 +194,34 @@ func (c *Config) Validate() error {
 	sev := c.Gates.Challenges.BlockOnSeverity
 	if sev != "" && sev != "low" && sev != "medium" && sev != "high" {
 		return fmt.Errorf("gates.challenges.block_on_severity must be low, medium, or high")
+	}
+
+	allActions := []struct {
+		name    string
+		actions []Action
+	}{
+		{"actions.on_accepted", c.Actions.OnAccepted},
+		{"actions.on_rejected", c.Actions.OnRejected},
+		{"actions.on_needs_action", c.Actions.OnNeedsAction},
+	}
+	for _, group := range allActions {
+		for i := range group.actions {
+			a := &group.actions[i]
+			if !a.Type.Valid() {
+				return fmt.Errorf("invalid %s[%d].type: %q", group.name, i, a.Type)
+			}
+			if a.Type == ActionAutoMerge && a.Method != "" {
+				if a.Method != "squash" && a.Method != "rebase" && a.Method != "merge" {
+					return fmt.Errorf("%s[%d].method must be squash, rebase, or merge", group.name, i)
+				}
+			}
+			if a.Type == ActionWebhook && a.URL == "" {
+				return fmt.Errorf("%s[%d].url is required for webhook actions", group.name, i)
+			}
+			if a.Type == ActionComment && a.Body == "" {
+				return fmt.Errorf("%s[%d].body is required for comment actions", group.name, i)
+			}
+		}
 	}
 
 	return nil
