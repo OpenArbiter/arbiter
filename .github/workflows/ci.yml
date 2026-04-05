@@ -21,6 +21,18 @@ jobs:
       - name: Run semgrep
         run: semgrep scan --config auto --config "p/golang" --config "p/security-audit" --config "p/secrets" --config "p/owasp-top-ten" --error .
 
+  trufflehog:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run trufflehog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+
   govulncheck:
     name: Dependency Vulnerabilities
     runs-on: ubuntu-latest
