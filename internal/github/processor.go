@@ -199,7 +199,7 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 
 	// Create initial check run (in_progress)
 	_, err = p.client.CreateCheckRun(ctx, installID, repo.Owner.Login, repo.Name, pr.Head.SHA, &CheckRunOpts{
-		Name:       "arbiter/trust",
+		Name:       "openarbiter/trust",
 		Status:     "in_progress",
 		Conclusion: "",
 		Title:      "Arbiter is evaluating this change",
@@ -269,7 +269,7 @@ func (p *Processor) handleCheckRunCompleted(ctx context.Context, job *queue.Job)
 	cr := event.CheckRun
 
 	// Ignore our own check runs
-	if cr.Name == "arbiter/trust" {
+	if cr.Name == "openarbiter/trust" {
 		return nil
 	}
 
@@ -414,7 +414,7 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 	}
 
 	_, err = p.client.CreateCheckRun(ctx, installID, owner, repo, headSHA, &CheckRunOpts{
-		Name:       "arbiter/trust",
+		Name:       "openarbiter/trust",
 		Status:     "completed",
 		Conclusion: conclusion,
 		Title:      fmt.Sprintf("Arbiter: %s", decision.Outcome),
