@@ -1,4 +1,8 @@
-.PHONY: build test test-integration test-e2e test-all lint fmt vet docker-up docker-down docker-build migrate clean
+.PHONY: build test test-integration test-e2e test-all lint fmt vet \
+       docker-up docker-down docker-build migrate \
+       harness-scenarios harness-live \
+       security-scan semgrep trufflehog govulncheck \
+       clean
 
 # Build
 build:
@@ -28,6 +32,21 @@ fmt:
 
 vet:
 	go vet ./...
+
+# Security
+security-scan: semgrep trufflehog govulncheck
+
+semgrep:
+	docker run --rm -v "$$(pwd):/src" semgrep/semgrep semgrep scan \
+		--config auto --config "p/golang" --config "p/security-audit" \
+		--config "p/secrets" --config "p/owasp-top-ten" --error /src
+
+trufflehog:
+	docker run --rm -v "$$(pwd):/src" trufflesecurity/trufflehog:latest \
+		filesystem --only-verified /src
+
+govulncheck:
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 # Docker
 docker-up:
