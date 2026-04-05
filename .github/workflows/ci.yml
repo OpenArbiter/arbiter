@@ -52,9 +52,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - name: Run golangci-lint
+        run: golangci-lint run ./...
 
   unit-test:
     name: Unit Tests
@@ -103,6 +104,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Apply migrations
+        env:
+          PGPASSWORD: arbiter
+        run: psql -h localhost -U arbiter -d arbiter_test -f migrations/001_initial.sql
       - name: Run integration tests
         env:
           ARBITER_DB_URL: postgres://arbiter:arbiter@localhost:5432/arbiter_test?sslmode=disable
@@ -140,6 +145,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Apply migrations
+        env:
+          PGPASSWORD: arbiter
+        run: psql -h localhost -U arbiter -d arbiter_test -f migrations/001_initial.sql
       - name: Run e2e tests
         env:
           ARBITER_DB_URL: postgres://arbiter:arbiter@localhost:5432/arbiter_test?sslmode=disable
