@@ -8,8 +8,30 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
+  semgrep:
+    name: Semgrep Security Scan
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run semgrep
+        run: semgrep scan --config auto --config "p/golang" --config "p/security-audit" --config "p/secrets" --config "p/owasp-top-ten" --error .
+
+  govulncheck:
+    name: Dependency Vulnerabilities
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
