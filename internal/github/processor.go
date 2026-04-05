@@ -63,6 +63,9 @@ func (p *Processor) Run(ctx context.Context) error {
 }
 
 func (p *Processor) processJob(ctx context.Context, job *queue.Job) error {
+	// Carry the webhook delivery ID as correlation ID through the pipeline
+	ctx = WithCorrelationID(ctx, job.ID)
+
 	slog.InfoContext(ctx, "processing job",
 		"job_id", job.ID,
 		"job_type", job.Type,

@@ -46,6 +46,11 @@ issues:
       linters:
         - gocritic
       text: "exitAfterDefer"
+    # slog.Handler interface requires Record by value
+    - path: internal/github/logging\.go
+      linters:
+        - gocritic
+      text: "hugeParam"
   max-issues-per-linter: 0
   max-same-issues: 0
 

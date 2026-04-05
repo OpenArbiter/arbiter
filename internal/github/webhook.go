@@ -54,7 +54,10 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	eventType := r.Header.Get("X-GitHub-Event")
 	deliveryID := r.Header.Get("X-GitHub-Delivery")
 
-	slog.Info("webhook received",
+	// Attach correlation ID for end-to-end tracing
+	ctx := WithCorrelationID(r.Context(), deliveryID)
+
+	slog.InfoContext(ctx, "webhook received",
 		"event", eventType,
 		"delivery_id", deliveryID,
 	)
@@ -62,7 +65,7 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	jobType, err := mapEventToJobType(eventType, body)
 	if err != nil {
 		// Event type we don't care about — acknowledge and ignore
-		slog.Debug("ignoring webhook event", "event", eventType, "reason", err.Error())
+		slog.DebugContext(ctx, "ignoring webhook event", "event", eventType, "reason", err.Error())
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, `{"status":"ignored"}`)
 		return
@@ -86,8 +89,8 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:      time.Now().UTC(),
 	}
 
-	if err := h.queue.Enqueue(r.Context(), &job); err != nil {
-		slog.Error("enqueueing webhook job", "error", err, "delivery_id", deliveryID)
+	if err := h.queue.Enqueue(ctx, &job); err != nil {
+		slog.ErrorContext(ctx, "enqueueing webhook job", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
