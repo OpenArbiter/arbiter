@@ -19,11 +19,12 @@ type Processor struct {
 	store  store.Store
 	queue  *queue.Queue
 	client *Client
+	stats  *Stats
 }
 
 // NewProcessor creates a new webhook event processor.
-func NewProcessor(s store.Store, q *queue.Queue, c *Client) *Processor {
-	return &Processor{store: s, queue: q, client: c}
+func NewProcessor(s store.Store, q *queue.Queue, c *Client, stats *Stats) *Processor {
+	return &Processor{store: s, queue: q, client: c, stats: stats}
 }
 
 // Run starts the worker loop, processing jobs until the context is cancelled.
@@ -50,14 +51,23 @@ func (p *Processor) Run(ctx context.Context) error {
 		}
 
 		if err := p.processJob(ctx, job); err != nil {
+			p.stats.jobsFailed.Add(1)
 			slog.ErrorContext(ctx, "processing job failed",
 				"job_id", job.ID,
 				"job_type", job.Type,
+				"permanent", IsPermanent(err),
 				"error", err,
 			)
-			if retryErr := p.queue.Retry(ctx, job, err); retryErr != nil {
-				slog.ErrorContext(ctx, "retry failed", "job_id", job.ID, "error", retryErr)
+			if IsPermanent(err) {
+				slog.WarnContext(ctx, "permanent error, skipping retry", "job_id", job.ID)
+			} else {
+				p.stats.jobsRetried.Add(1)
+				if retryErr := p.queue.Retry(ctx, job, err); retryErr != nil {
+					slog.ErrorContext(ctx, "retry failed", "job_id", job.ID, "error", retryErr)
+				}
 			}
+		} else {
+			p.stats.jobsProcessed.Add(1)
 		}
 	}
 }
@@ -79,6 +89,8 @@ func (p *Processor) processJob(ctx context.Context, job *queue.Job) error {
 		return p.handlePRClosed(ctx, job)
 	case queue.JobCheckRunCompleted:
 		return p.handleCheckRunCompleted(ctx, job)
+	case queue.JobCheckSuiteCompleted:
+		return p.handleCheckSuiteCompleted(ctx, job)
 	default:
 		slog.WarnContext(ctx, "unknown job type", "job_type", job.Type)
 		return nil
@@ -121,7 +133,7 @@ type PREvent struct {
 func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 	var event PREvent
 	if err := json.Unmarshal(job.Payload, &event); err != nil {
-		return fmt.Errorf("parsing PR event: %w", err)
+		return permanent("parsing PR event: %w", err)
 	}
 
 	pr := event.PullRequest
@@ -216,7 +228,7 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 func (p *Processor) handlePRClosed(ctx context.Context, job *queue.Job) error {
 	var event PREvent
 	if err := json.Unmarshal(job.Payload, &event); err != nil {
-		return fmt.Errorf("parsing PR event: %w", err)
+		return permanent("parsing PR event: %w", err)
 	}
 
 	// Find and withdraw the latest proposal
@@ -263,7 +275,7 @@ type CheckRunEvent struct {
 func (p *Processor) handleCheckRunCompleted(ctx context.Context, job *queue.Job) error {
 	var event CheckRunEvent
 	if err := json.Unmarshal(job.Payload, &event); err != nil {
-		return fmt.Errorf("parsing check_run event: %w", err)
+		return permanent("parsing check_run event: %w", err)
 	}
 
 	cr := event.CheckRun
@@ -424,6 +436,15 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 		slog.WarnContext(ctx, "could not update check run", "error", err)
 	}
 
+	switch decision.Outcome {
+	case model.DecisionAccepted:
+		p.stats.decisionsAccepted.Add(1)
+	case model.DecisionRejected:
+		p.stats.decisionsRejected.Add(1)
+	case model.DecisionNeedsAction:
+		p.stats.decisionsNeedsAction.Add(1)
+	}
+
 	slog.InfoContext(ctx, "evaluation complete",
 		"proposal_id", proposalID,
 		"outcome", decision.Outcome,
@@ -441,8 +462,82 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 			HeadSHA:        headSHA,
 			Decision:       decision,
 			Confidence:     result.Confidence,
+			Stats:          p.stats,
 		}
 		p.client.ExecuteActions(ctx, actCtx, cfg.Actions)
+	}
+
+	return nil
+}
+
+// CheckSuiteEvent is the relevant subset of a GitHub check_suite webhook payload.
+type CheckSuiteEvent struct {
+	Action     string `json:"action"`
+	CheckSuite struct {
+		HeadSHA    string `json:"head_sha"`
+		Conclusion string `json:"conclusion"`
+		PullRequests []struct {
+			Number int `json:"number"`
+		} `json:"pull_requests"`
+	} `json:"check_suite"`
+	Repository struct {
+		FullName string `json:"full_name"`
+		Owner    struct {
+			Login string `json:"login"`
+		} `json:"owner"`
+		Name string `json:"name"`
+	} `json:"repository"`
+	Installation struct {
+		ID int64 `json:"id"`
+	} `json:"installation"`
+}
+
+func (p *Processor) handleCheckSuiteCompleted(ctx context.Context, job *queue.Job) error {
+	var event CheckSuiteEvent
+	if err := json.Unmarshal(job.Payload, &event); err != nil {
+		return permanent("parsing check_suite event: %w", err)
+	}
+
+	cs := event.CheckSuite
+	installID := event.Installation.ID
+	tenantID := fmt.Sprintf("github:%d", installID)
+	repo := event.Repository
+
+	slog.InfoContext(ctx, "check suite completed",
+		"head_sha", cs.HeadSHA,
+		"conclusion", cs.Conclusion,
+		"pr_count", len(cs.PullRequests),
+	)
+
+	// Re-evaluate each PR associated with this check suite
+	for _, pr := range cs.PullRequests {
+		proposalID := fmt.Sprintf("gh:%s:pr:%d:sha:%s", repo.FullName, pr.Number, cs.HeadSHA)
+
+		// Verify proposal exists
+		if _, err := p.store.GetProposal(ctx, proposalID); err != nil {
+			if err == store.ErrNotFound {
+				slog.DebugContext(ctx, "no proposal for check suite PR",
+					"pr", pr.Number, "head_sha", cs.HeadSHA)
+				continue
+			}
+			return fmt.Errorf("getting proposal: %w", err)
+		}
+
+		// Find base ref from the task's external refs
+		taskID := fmt.Sprintf("gh:%s:pr:%d", repo.FullName, pr.Number)
+		proposals, err := p.store.ListProposalsByTask(ctx, taskID)
+		if err != nil {
+			return fmt.Errorf("listing proposals: %w", err)
+		}
+
+		// Use empty baseRef — config was loaded on initial PR event
+		_ = proposals
+		_ = tenantID
+		if err := p.evaluateProposal(ctx, proposalID, installID,
+			repo.Owner.Login, repo.Name, cs.HeadSHA, "", pr.Number); err != nil {
+			slog.ErrorContext(ctx, "re-evaluation failed on check suite complete",
+				"proposal_id", proposalID, "error", err)
+		}
 	}
 
 	return nil

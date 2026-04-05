@@ -7,9 +7,11 @@ export
        security-scan semgrep trufflehog govulncheck \
        clean
 
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+
 # Build
 build:
-	go build -o bin/arbiter ./cmd/arbiter/
+	go build -ldflags "-X main.version=$(VERSION)" -o bin/arbiter ./cmd/arbiter/
 
 build-harness:
 	go build -o bin/harness ./cmd/harness/
@@ -25,6 +27,9 @@ test-e2e:
 	go test -race -tags=e2e ./...
 
 test-all: test test-integration test-e2e
+
+test-full: test test-integration harness-scenarios
+	@echo "All tests passed."
 
 # Code quality
 lint:

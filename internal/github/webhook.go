@@ -19,13 +19,15 @@ import (
 type WebhookHandler struct {
 	webhookSecret []byte
 	queue         *queue.Queue
+	stats         *Stats
 }
 
 // NewWebhookHandler creates a new webhook handler.
-func NewWebhookHandler(webhookSecret string, q *queue.Queue) *WebhookHandler {
+func NewWebhookHandler(webhookSecret string, q *queue.Queue, stats *Stats) *WebhookHandler {
 	return &WebhookHandler{
 		webhookSecret: []byte(webhookSecret),
 		queue:         q,
+		stats:         stats,
 	}
 }
 
@@ -57,6 +59,8 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Attach correlation ID for end-to-end tracing
 	ctx := WithCorrelationID(r.Context(), deliveryID)
 
+	h.stats.webhooksReceived.Add(1)
+
 	slog.InfoContext(ctx, "webhook received",
 		"event", eventType,
 		"delivery_id", deliveryID,
@@ -64,7 +68,7 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	jobType, err := mapEventToJobType(eventType, body)
 	if err != nil {
-		// Event type we don't care about — acknowledge and ignore
+		h.stats.webhooksIgnored.Add(1)
 		slog.DebugContext(ctx, "ignoring webhook event", "event", eventType, "reason", err.Error())
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, `{"status":"ignored"}`)
@@ -153,6 +157,18 @@ func mapEventToJobType(eventType string, body []byte) (queue.JobType, error) {
 			return queue.JobCheckRunCompleted, nil
 		}
 		return "", fmt.Errorf("unhandled check_run action: %s", cr.Action)
+
+	case "check_suite":
+		var cs struct {
+			Action string `json:"action"`
+		}
+		if err := json.Unmarshal(body, &cs); err != nil {
+			return "", fmt.Errorf("parsing check_suite payload: %w", err)
+		}
+		if cs.Action == "completed" {
+			return queue.JobCheckSuiteCompleted, nil
+		}
+		return "", fmt.Errorf("unhandled check_suite action: %s", cs.Action)
 	}
 
 	return "", fmt.Errorf("unhandled event type: %s", eventType)

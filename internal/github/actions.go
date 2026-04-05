@@ -25,6 +25,7 @@ type ActionContext struct {
 	HeadSHA        string
 	Decision       model.Decision
 	Confidence     float64
+	Stats          *Stats
 }
 
 // ExecuteActions runs all configured actions for the given decision outcome.
@@ -45,10 +46,15 @@ func (c *Client) ExecuteActions(ctx context.Context, actCtx *ActionContext, cfg 
 	for i := range actions {
 		action := &actions[i]
 		if err := c.executeAction(ctx, actCtx, action); err != nil {
+			if actCtx.Stats != nil {
+				actCtx.Stats.actionsFailed.Add(1)
+			}
 			slog.ErrorContext(ctx, "action failed",
 				"action_type", action.Type,
 				"error", err,
 			)
+		} else if actCtx.Stats != nil {
+			actCtx.Stats.actionsExecuted.Add(1)
 		}
 	}
 }

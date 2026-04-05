@@ -20,10 +20,11 @@ const (
 type JobType string
 
 const (
-	JobPROpened          JobType = "pr_opened"
-	JobPRSynchronize     JobType = "pr_synchronize"
-	JobPRClosed          JobType = "pr_closed"
-	JobCheckRunCompleted JobType = "check_run_completed"
+	JobPROpened            JobType = "pr_opened"
+	JobPRSynchronize       JobType = "pr_synchronize"
+	JobPRClosed            JobType = "pr_closed"
+	JobCheckRunCompleted   JobType = "check_run_completed"
+	JobCheckSuiteCompleted JobType = "check_suite_completed"
 )
 
 // Job represents a unit of work to be processed asynchronously.

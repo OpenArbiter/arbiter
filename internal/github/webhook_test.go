@@ -120,7 +120,7 @@ func TestMapEventToJobType(t *testing.T) {
 // --- HTTP Handler ---
 
 func TestWebhookHandler_MethodNotAllowed(t *testing.T) {
-	h := NewWebhookHandler(testSecret, nil)
+	h := NewWebhookHandler(testSecret, nil, NewStats())
 	req := httptest.NewRequest(http.MethodGet, "/webhook", nil)
 	w := httptest.NewRecorder()
 
@@ -132,7 +132,7 @@ func TestWebhookHandler_MethodNotAllowed(t *testing.T) {
 }
 
 func TestWebhookHandler_InvalidSignature(t *testing.T) {
-	h := NewWebhookHandler(testSecret, nil)
+	h := NewWebhookHandler(testSecret, nil, NewStats())
 	body := `{"action":"opened"}`
 	req := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(body))
 	req.Header.Set("X-Hub-Signature-256", "sha256=invalid")
@@ -147,7 +147,7 @@ func TestWebhookHandler_InvalidSignature(t *testing.T) {
 }
 
 func TestWebhookHandler_IgnoredEvent(t *testing.T) {
-	h := NewWebhookHandler(testSecret, nil)
+	h := NewWebhookHandler(testSecret, nil, NewStats())
 	body := `{"action":"labeled"}`
 	req := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(body))
 	req.Header.Set("X-Hub-Signature-256", signPayload(testSecret, body))
@@ -163,7 +163,7 @@ func TestWebhookHandler_IgnoredEvent(t *testing.T) {
 }
 
 func TestWebhookHandler_MissingSignature(t *testing.T) {
-	h := NewWebhookHandler(testSecret, nil)
+	h := NewWebhookHandler(testSecret, nil, NewStats())
 	body := `{"action":"opened"}`
 	req := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(body))
 	req.Header.Set("X-GitHub-Event", "pull_request")

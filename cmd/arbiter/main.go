@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -15,6 +16,9 @@ import (
 	"github.com/openarbiter/arbiter/internal/queue"
 	"github.com/openarbiter/arbiter/internal/store"
 )
+
+// version is set at build time via -ldflags.
+var version = "dev"
 
 func main() {
 	logLevel := slog.LevelInfo
@@ -84,20 +88,57 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 		return fmt.Errorf("initializing github client: %w", err)
 	}
 
+	// Initialize stats
+	stats := gh.NewStats()
+
 	// Set up routes
 	mux := http.NewServeMux()
-	mux.Handle("/webhook", gh.NewWebhookHandler(webhookSecret, q))
+	rateLimiter := gh.NewRateLimiter(100, 200) // 100 req/s, burst 200
+	mux.Handle("/webhook", rateLimiter.Middleware(gh.NewWebhookHandler(webhookSecret, q, stats)))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		status := struct {
+			Status  string `json:"status"`
+			Version string `json:"version"`
+			Uptime  string `json:"uptime"`
+			DB      string `json:"db"`
+			Redis   string `json:"redis"`
+		}{
+			Status:  "ok",
+			Version: version,
+			Uptime:  stats.Snapshot().Uptime,
+			DB:      "ok",
+			Redis:   "ok",
+		}
 		if err := pgStore.Ping(r.Context()); err != nil {
-			http.Error(w, "database unhealthy", http.StatusServiceUnavailable)
-			return
+			status.Status = "degraded"
+			status.DB = "unhealthy"
 		}
 		if err := q.Ping(r.Context()); err != nil {
-			http.Error(w, "redis unhealthy", http.StatusServiceUnavailable)
-			return
+			status.Status = "degraded"
+			status.Redis = "unhealthy"
 		}
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `{"status":"ok"}`)
+		w.Header().Set("Content-Type", "application/json")
+		if status.Status != "ok" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+		_ = json.NewEncoder(w).Encode(status)
+	})
+	mux.HandleFunc("/stats", func(w http.ResponseWriter, r *http.Request) {
+		snapshot := stats.Snapshot()
+		queueLen, _ := q.Len(r.Context())
+		deadLen, _ := q.DeadLetterLen(r.Context())
+
+		resp := struct {
+			gh.StatsSnapshot
+			QueueDepth    int64 `json:"queue_depth"`
+			DeadLetterLen int64 `json:"dead_letter_len"`
+		}{
+			StatsSnapshot: snapshot,
+			QueueDepth:    queueLen,
+			DeadLetterLen: deadLen,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
 	})
 
 	server := &http.Server{
@@ -109,7 +150,7 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 	}
 
 	// Start processor
-	processor := gh.NewProcessor(pgStore, q, ghClient)
+	processor := gh.NewProcessor(pgStore, q, ghClient, stats)
 	go func() {
 		if err := processor.Run(ctx); err != nil && ctx.Err() == nil {
 			slog.Error("processor error", "error", err)
