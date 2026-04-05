@@ -5,6 +5,7 @@ package queue
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -135,5 +136,98 @@ func TestQueue_DequeueContextCancelled(t *testing.T) {
 	_, err := q.Dequeue(ctx, 5*time.Second)
 	if err == nil {
 		t.Fatal("expected error on cancelled context")
+	}
+}
+
+func TestQueue_Retry(t *testing.T) {
+	q := testQueue(t)
+	ctx := context.Background()
+
+	job := &Job{
+		ID:        "retry-job",
+		Type:      JobPROpened,
+		Payload:   json.RawMessage(`{}`),
+		CreatedAt: time.Now().UTC(),
+		Attempts:  0,
+	}
+
+	// Retry should re-enqueue with incremented attempt count
+	if err := q.Retry(ctx, job, fmt.Errorf("temporary failure")); err != nil {
+		t.Fatalf("Retry: %v", err)
+	}
+
+	got, err := q.Dequeue(ctx, 1*time.Second)
+	if err != nil {
+		t.Fatalf("Dequeue: %v", err)
+	}
+	if got.Attempts != 1 {
+		t.Errorf("Attempts = %d, want 1", got.Attempts)
+	}
+	if got.LastError != "temporary failure" {
+		t.Errorf("LastError = %q, want 'temporary failure'", got.LastError)
+	}
+}
+
+func TestQueue_RetryExceedsMax_MovesToDeadLetter(t *testing.T) {
+	q := testQueue(t)
+	ctx := context.Background()
+	// Also clean dead letter
+	q.client.Del(ctx, deadLetterKey)
+
+	job := &Job{
+		ID:        "dead-job",
+		Type:      JobPROpened,
+		Payload:   json.RawMessage(`{}`),
+		CreatedAt: time.Now().UTC(),
+		Attempts:  maxRetries - 1, // one more retry will exceed
+	}
+
+	if err := q.Retry(ctx, job, fmt.Errorf("permanent failure")); err != nil {
+		t.Fatalf("Retry: %v", err)
+	}
+
+	// Should NOT be in main queue
+	mainLen, _ := q.Len(ctx)
+	if mainLen != 0 {
+		t.Errorf("main queue len = %d, want 0", mainLen)
+	}
+
+	// Should be in dead letter queue
+	dlLen, _ := q.DeadLetterLen(ctx)
+	if dlLen != 1 {
+		t.Errorf("dead letter len = %d, want 1", dlLen)
+	}
+}
+
+func TestQueue_DrainDeadLetter(t *testing.T) {
+	q := testQueue(t)
+	ctx := context.Background()
+	q.client.Del(ctx, deadLetterKey)
+
+	// Put a job in dead letter
+	job := &Job{
+		ID:        "drain-job",
+		Type:      JobPROpened,
+		Payload:   json.RawMessage(`{}`),
+		CreatedAt: time.Now().UTC(),
+		Attempts:  maxRetries,
+	}
+	q.Retry(ctx, job, fmt.Errorf("final failure"))
+
+	jobs, err := q.DrainDeadLetter(ctx)
+	if err != nil {
+		t.Fatalf("DrainDeadLetter: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("got %d jobs, want 1", len(jobs))
+	}
+	if jobs[0].ID != "drain-job" {
+		t.Errorf("ID = %q, want drain-job", jobs[0].ID)
+	}
+
+	// Dead letter should be empty now
+	dlLen, _ := q.DeadLetterLen(ctx)
+	if dlLen != 0 {
+		t.Errorf("dead letter len = %d, want 0 after drain", dlLen)
 	}
 }

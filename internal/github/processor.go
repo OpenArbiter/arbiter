@@ -55,6 +55,9 @@ func (p *Processor) Run(ctx context.Context) error {
 				"job_type", job.Type,
 				"error", err,
 			)
+			if retryErr := p.queue.Retry(ctx, job, err); retryErr != nil {
+				slog.ErrorContext(ctx, "retry failed", "job_id", job.ID, "error", retryErr)
+			}
 		}
 	}
 }
