@@ -192,7 +192,7 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 	}
 
 	// Create initial check run (in_progress)
-	_, err = p.client.CreateCheckRun(ctx, installID, repo.Owner.Login, repo.Name, pr.Head.SHA, CheckRunOpts{
+	_, err = p.client.CreateCheckRun(ctx, installID, repo.Owner.Login, repo.Name, pr.Head.SHA, &CheckRunOpts{
 		Name:       "arbiter/trust",
 		Status:     "in_progress",
 		Conclusion: "",
@@ -220,10 +220,10 @@ func (p *Processor) handlePRClosed(ctx context.Context, job *queue.Job) error {
 		return fmt.Errorf("listing proposals: %w", err)
 	}
 
-	for _, prop := range proposals {
-		if prop.Status == model.ProposalOpen {
-			if err := p.store.UpdateProposalStatus(ctx, prop.ProposalID, model.ProposalWithdrawn); err != nil {
-				slog.WarnContext(ctx, "could not withdraw proposal", "proposal_id", prop.ProposalID, "error", err)
+	for i := range proposals {
+		if proposals[i].Status == model.ProposalOpen {
+			if err := p.store.UpdateProposalStatus(ctx, proposals[i].ProposalID, model.ProposalWithdrawn); err != nil {
+				slog.WarnContext(ctx, "could not withdraw proposal", "proposal_id", proposals[i].ProposalID, "error", err)
 			}
 		}
 	}
@@ -278,14 +278,12 @@ func (p *Processor) handleCheckRunCompleted(ctx context.Context, job *queue.Job)
 	}
 
 	var matchedProposal *model.Proposal
-	for _, prop := range proposals {
-		if prop.ChangeRef.ExternalID != "" {
-			// Check if the proposal's SHA matches this check run
-			// The proposal ID encodes the SHA
+	for i := range proposals {
+		if proposals[i].ChangeRef.ExternalID != "" {
 			expectedSuffix := ":sha:" + cr.HeadSHA
-			if len(prop.ProposalID) > len(expectedSuffix) &&
-				prop.ProposalID[len(prop.ProposalID)-len(expectedSuffix):] == expectedSuffix {
-				matchedProposal = &prop
+			if len(proposals[i].ProposalID) > len(expectedSuffix) &&
+				proposals[i].ProposalID[len(proposals[i].ProposalID)-len(expectedSuffix):] == expectedSuffix {
+				matchedProposal = &proposals[i]
 				break
 			}
 		}
@@ -388,7 +386,7 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 		Challenges: challenges,
 		Config:     cfg,
 	}
-	result := engine.Evaluate(evalCtx)
+	result := engine.Evaluate(&evalCtx)
 
 	// Store the decision
 	decision := result.Decision
@@ -408,7 +406,7 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 		conclusion = "action_required"
 	}
 
-	_, err = p.client.CreateCheckRun(ctx, installID, owner, repo, headSHA, CheckRunOpts{
+	_, err = p.client.CreateCheckRun(ctx, installID, owner, repo, headSHA, &CheckRunOpts{
 		Name:       "arbiter/trust",
 		Status:     "completed",
 		Conclusion: conclusion,

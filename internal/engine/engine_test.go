@@ -83,7 +83,7 @@ func TestEvaluate_AllPassing(t *testing.T) {
 		makeEvidence("ev-2", model.EvidenceTestSuite, model.EvidencePass),
 	}
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 
 	if result.Decision.Outcome != model.DecisionAccepted {
 		t.Errorf("outcome = %q, want accepted", result.Decision.Outcome)
@@ -106,7 +106,7 @@ func TestEvaluate_AllFailing(t *testing.T) {
 		makeChallenge("ch-1", model.SeverityHigh, model.ChallengeOpen),
 	}
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 
 	if result.Decision.Outcome != model.DecisionRejected {
 		t.Errorf("outcome = %q, want rejected", result.Decision.Outcome)
@@ -127,7 +127,7 @@ func TestEvaluate_EmptyEvidence(t *testing.T) {
 	ctx := defaultCtx()
 	// No evidence at all
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 
 	if result.Decision.Outcome != model.DecisionRejected {
 		t.Errorf("outcome = %q, want rejected (no evidence)", result.Decision.Outcome)
@@ -144,7 +144,7 @@ func TestEvaluate_DecisionLinksEvidenceAndChallenges(t *testing.T) {
 		makeChallenge("ch-1", model.SeverityLow, model.ChallengeResolved),
 	}
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 
 	if len(result.Decision.LinkedEvidenceIDs) != 2 {
 		t.Errorf("linked evidence = %d, want 2", len(result.Decision.LinkedEvidenceIDs))
@@ -161,7 +161,7 @@ func TestEvaluate_DecisionMetadata(t *testing.T) {
 		makeEvidence("ev-2", model.EvidenceTestSuite, model.EvidencePass),
 	}
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 
 	if result.Decision.ProposalID != "prop-1" {
 		t.Errorf("ProposalID = %q, want prop-1", result.Decision.ProposalID)
@@ -188,7 +188,7 @@ func TestGate_Mechanical_AllPass(t *testing.T) {
 		makeEvidence("ev-2", model.EvidenceTestSuite, model.EvidencePass),
 	}
 
-	result := evaluateMechanical(ctx)
+	result := evaluateMechanical(&ctx)
 	if result.Status != GatePassed {
 		t.Errorf("status = %q, want passed", result.Status)
 	}
@@ -201,7 +201,7 @@ func TestGate_Mechanical_BuildFails(t *testing.T) {
 		makeEvidence("ev-2", model.EvidenceTestSuite, model.EvidencePass),
 	}
 
-	result := evaluateMechanical(ctx)
+	result := evaluateMechanical(&ctx)
 	if result.Status != GateFailed {
 		t.Errorf("status = %q, want failed", result.Status)
 	}
@@ -217,7 +217,7 @@ func TestGate_Mechanical_MissingEvidence(t *testing.T) {
 		// test_suite missing
 	}
 
-	result := evaluateMechanical(ctx)
+	result := evaluateMechanical(&ctx)
 	if result.Status != GateFailed {
 		t.Errorf("status = %q, want failed (missing test_suite)", result.Status)
 	}
@@ -227,7 +227,7 @@ func TestGate_Mechanical_NoChecksConfigured(t *testing.T) {
 	ctx := defaultCtx()
 	ctx.Config.Gates.Mechanical.Checks = nil
 
-	result := evaluateMechanical(ctx)
+	result := evaluateMechanical(&ctx)
 	if result.Status != GatePassed {
 		t.Errorf("status = %q, want passed (no checks required)", result.Status)
 	}
@@ -240,7 +240,7 @@ func TestGate_Mechanical_WarnAndInfoIgnored(t *testing.T) {
 		makeEvidence("ev-2", model.EvidenceTestSuite, model.EvidenceInfo),
 	}
 
-	result := evaluateMechanical(ctx)
+	result := evaluateMechanical(&ctx)
 	if result.Status != GateFailed {
 		t.Errorf("status = %q, want failed (warn/info don't count as pass)", result.Status)
 	}
@@ -254,7 +254,7 @@ func TestGate_Mechanical_MultipleEvidenceSameType(t *testing.T) {
 		makeEvidence("ev-3", model.EvidenceTestSuite, model.EvidencePass),
 	}
 
-	result := evaluateMechanical(ctx)
+	result := evaluateMechanical(&ctx)
 	// Both pass and fail exist for build_check — fail takes priority
 	if result.Status != GateFailed {
 		t.Errorf("status = %q, want failed (fail evidence exists)", result.Status)
@@ -267,7 +267,7 @@ func TestGate_Mechanical_MultipleEvidenceSameType(t *testing.T) {
 
 func TestGate_Policy_NoPolicyEvidence(t *testing.T) {
 	ctx := defaultCtx()
-	result := evaluatePolicy(ctx)
+	result := evaluatePolicy(&ctx)
 	if result.Status != GatePassed {
 		t.Errorf("status = %q, want passed (no policy evidence)", result.Status)
 	}
@@ -279,7 +279,7 @@ func TestGate_Policy_PolicyPasses(t *testing.T) {
 		makeEvidence("ev-1", model.EvidencePolicyCheck, model.EvidencePass),
 	}
 
-	result := evaluatePolicy(ctx)
+	result := evaluatePolicy(&ctx)
 	if result.Status != GatePassed {
 		t.Errorf("status = %q, want passed", result.Status)
 	}
@@ -291,7 +291,7 @@ func TestGate_Policy_PolicyFails(t *testing.T) {
 		makeEvidenceWithSummary("ev-1", model.EvidencePolicyCheck, model.EvidenceFail, "blocked dependency detected"),
 	}
 
-	result := evaluatePolicy(ctx)
+	result := evaluatePolicy(&ctx)
 	if result.Status != GateFailed {
 		t.Errorf("status = %q, want failed", result.Status)
 	}
@@ -307,7 +307,7 @@ func TestGate_Policy_MultiplePolicyFailures(t *testing.T) {
 		makeEvidenceWithSummary("ev-2", model.EvidencePolicyCheck, model.EvidenceFail, "issue 2"),
 	}
 
-	result := evaluatePolicy(ctx)
+	result := evaluatePolicy(&ctx)
 	if len(result.Reasons) != 2 {
 		t.Errorf("reasons = %d, want 2", len(result.Reasons))
 	}
@@ -323,7 +323,7 @@ func TestGate_Behavioral_Passes(t *testing.T) {
 		makeEvidence("ev-1", model.EvidenceTestSuite, model.EvidencePass),
 	}
 
-	result := evaluateBehavioral(ctx)
+	result := evaluateBehavioral(&ctx)
 	if result.Status != GatePassed {
 		t.Errorf("status = %q, want passed", result.Status)
 	}
@@ -332,7 +332,7 @@ func TestGate_Behavioral_Passes(t *testing.T) {
 func TestGate_Behavioral_NoTests(t *testing.T) {
 	ctx := defaultCtx()
 
-	result := evaluateBehavioral(ctx)
+	result := evaluateBehavioral(&ctx)
 	if result.Status != GateFailed {
 		t.Errorf("status = %q, want failed (no tests)", result.Status)
 	}
@@ -344,7 +344,7 @@ func TestGate_Behavioral_FailingTestsDontCount(t *testing.T) {
 		makeEvidence("ev-1", model.EvidenceTestSuite, model.EvidenceFail),
 	}
 
-	result := evaluateBehavioral(ctx)
+	result := evaluateBehavioral(&ctx)
 	if result.Status != GateFailed {
 		t.Errorf("status = %q, want failed (failing tests don't count)", result.Status)
 	}
@@ -358,7 +358,7 @@ func TestGate_Behavioral_HigherThreshold(t *testing.T) {
 		makeEvidence("ev-2", model.EvidenceTestSuite, model.EvidencePass),
 	}
 
-	result := evaluateBehavioral(ctx)
+	result := evaluateBehavioral(&ctx)
 	if result.Status != GateFailed {
 		t.Errorf("status = %q, want failed (need 3, got 2)", result.Status)
 	}
@@ -368,7 +368,7 @@ func TestGate_Behavioral_ZeroThreshold(t *testing.T) {
 	ctx := defaultCtx()
 	ctx.Config.Gates.Behavioral.MinPassingTests = 0
 
-	result := evaluateBehavioral(ctx)
+	result := evaluateBehavioral(&ctx)
 	if result.Status != GatePassed {
 		t.Errorf("status = %q, want passed (zero threshold)", result.Status)
 	}
@@ -381,7 +381,7 @@ func TestGate_Behavioral_OtherEvidenceIgnored(t *testing.T) {
 		makeEvidence("ev-2", model.EvidenceSecurityScan, model.EvidencePass),
 	}
 
-	result := evaluateBehavioral(ctx)
+	result := evaluateBehavioral(&ctx)
 	if result.Status != GateFailed {
 		t.Errorf("status = %q, want failed (non-test evidence doesn't count)", result.Status)
 	}
@@ -393,7 +393,7 @@ func TestGate_Behavioral_OtherEvidenceIgnored(t *testing.T) {
 
 func TestGate_Challenges_NoChallenges(t *testing.T) {
 	ctx := defaultCtx()
-	result := evaluateChallenges(ctx)
+	result := evaluateChallenges(&ctx)
 	if result.Status != GatePassed {
 		t.Errorf("status = %q, want passed", result.Status)
 	}
@@ -405,7 +405,7 @@ func TestGate_Challenges_OpenHighBlocks(t *testing.T) {
 		makeChallenge("ch-1", model.SeverityHigh, model.ChallengeOpen),
 	}
 
-	result := evaluateChallenges(ctx)
+	result := evaluateChallenges(&ctx)
 	if result.Status != GateFailed {
 		t.Errorf("status = %q, want failed", result.Status)
 	}
@@ -417,7 +417,7 @@ func TestGate_Challenges_OpenMediumDoesNotBlockByDefault(t *testing.T) {
 		makeChallenge("ch-1", model.SeverityMedium, model.ChallengeOpen),
 	}
 
-	result := evaluateChallenges(ctx)
+	result := evaluateChallenges(&ctx)
 	if result.Status != GatePassed {
 		t.Errorf("status = %q, want passed (default blocks on high only)", result.Status)
 	}
@@ -430,7 +430,7 @@ func TestGate_Challenges_BlockOnMediumConfig(t *testing.T) {
 		makeChallenge("ch-1", model.SeverityMedium, model.ChallengeOpen),
 	}
 
-	result := evaluateChallenges(ctx)
+	result := evaluateChallenges(&ctx)
 	if result.Status != GateFailed {
 		t.Errorf("status = %q, want failed (block on medium)", result.Status)
 	}
@@ -443,7 +443,7 @@ func TestGate_Challenges_BlockOnLowConfig(t *testing.T) {
 		makeChallenge("ch-1", model.SeverityLow, model.ChallengeOpen),
 	}
 
-	result := evaluateChallenges(ctx)
+	result := evaluateChallenges(&ctx)
 	if result.Status != GateFailed {
 		t.Errorf("status = %q, want failed (block on low)", result.Status)
 	}
@@ -455,7 +455,7 @@ func TestGate_Challenges_ResolvedIgnored(t *testing.T) {
 		makeChallenge("ch-1", model.SeverityHigh, model.ChallengeResolved),
 	}
 
-	result := evaluateChallenges(ctx)
+	result := evaluateChallenges(&ctx)
 	if result.Status != GatePassed {
 		t.Errorf("status = %q, want passed (resolved challenges ignored)", result.Status)
 	}
@@ -467,7 +467,7 @@ func TestGate_Challenges_DismissedIgnored(t *testing.T) {
 		makeChallenge("ch-1", model.SeverityHigh, model.ChallengeDismissed),
 	}
 
-	result := evaluateChallenges(ctx)
+	result := evaluateChallenges(&ctx)
 	if result.Status != GatePassed {
 		t.Errorf("status = %q, want passed (dismissed challenges ignored)", result.Status)
 	}
@@ -481,7 +481,7 @@ func TestGate_Challenges_MultipleChallenges(t *testing.T) {
 		makeChallenge("ch-3", model.SeverityLow, model.ChallengeOpen),
 	}
 
-	result := evaluateChallenges(ctx)
+	result := evaluateChallenges(&ctx)
 	if result.Status != GateFailed {
 		t.Errorf("status = %q, want failed", result.Status)
 	}
@@ -496,7 +496,7 @@ func TestGate_Challenges_MultipleChallenges(t *testing.T) {
 
 func TestGate_Scope_NoEvidence(t *testing.T) {
 	ctx := defaultCtx()
-	result := evaluateScope(ctx)
+	result := evaluateScope(&ctx)
 	if result.Status != GatePassed {
 		t.Errorf("status = %q, want passed (no scope evidence)", result.Status)
 	}
@@ -508,7 +508,7 @@ func TestGate_Scope_Passes(t *testing.T) {
 		makeEvidence("ev-1", model.EvidenceScopeMatch, model.EvidencePass),
 	}
 
-	result := evaluateScope(ctx)
+	result := evaluateScope(&ctx)
 	if result.Status != GatePassed {
 		t.Errorf("status = %q, want passed", result.Status)
 	}
@@ -520,7 +520,7 @@ func TestGate_Scope_Fails(t *testing.T) {
 		makeEvidenceWithSummary("ev-1", model.EvidenceScopeMatch, model.EvidenceFail, "changed files outside declared scope"),
 	}
 
-	result := evaluateScope(ctx)
+	result := evaluateScope(&ctx)
 	if result.Status != GateFailed {
 		t.Errorf("status = %q, want failed", result.Status)
 	}
@@ -541,7 +541,7 @@ func TestGateMode_Skip(t *testing.T) {
 	ctx.Config.Gates.Challenges.Mode = config.GateSkip
 	ctx.Config.Gates.Scope.Mode = config.GateSkip
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 
 	if result.Decision.Outcome != model.DecisionAccepted {
 		t.Errorf("outcome = %q, want accepted (all skipped)", result.Decision.Outcome)
@@ -560,7 +560,7 @@ func TestGateMode_WarnDoesNotBlock(t *testing.T) {
 	// No evidence — mechanical and behavioral would fail
 	ctx.Evidence = nil
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 
 	if result.Decision.Outcome != model.DecisionAccepted {
 		t.Errorf("outcome = %q, want accepted (warn mode)", result.Decision.Outcome)
@@ -576,7 +576,7 @@ func TestGateMode_EnforceBlocks(t *testing.T) {
 	// No evidence — mechanical fails
 	ctx.Evidence = nil
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 
 	if result.Decision.Outcome != model.DecisionRejected {
 		t.Errorf("outcome = %q, want rejected (enforce mode)", result.Decision.Outcome)
@@ -591,7 +591,7 @@ func TestGateMode_MixedEnforceAndWarn(t *testing.T) {
 		makeEvidence("ev-1", model.EvidenceBuildCheck, model.EvidencePass),
 	}
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 
 	if result.Decision.Outcome != model.DecisionRejected {
 		t.Errorf("outcome = %q, want rejected (behavioral enforced)", result.Decision.Outcome)
@@ -609,7 +609,7 @@ func TestReasonCode_MechanicalFirst(t *testing.T) {
 		makeEvidenceWithSummary("ev-2", model.EvidencePolicyCheck, model.EvidenceFail, "policy issue"),
 	}
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 	if result.Decision.ReasonCode != model.ReasonMechanicalCheckFailed {
 		t.Errorf("reason = %q, want mechanical_check_failed (first gate priority)", result.Decision.ReasonCode)
 	}
@@ -623,7 +623,7 @@ func TestReasonCode_PolicyWhenOnlyPolicyFails(t *testing.T) {
 		makeEvidenceWithSummary("ev-3", model.EvidencePolicyCheck, model.EvidenceFail, "blocked"),
 	}
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 	if result.Decision.ReasonCode != model.ReasonPolicyViolation {
 		t.Errorf("reason = %q, want policy_violation", result.Decision.ReasonCode)
 	}
@@ -639,7 +639,7 @@ func TestReasonCode_ChallengeWhenOnlyChallengeBlocks(t *testing.T) {
 		makeChallenge("ch-1", model.SeverityHigh, model.ChallengeOpen),
 	}
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 	if result.Decision.ReasonCode != model.ReasonUnresolvedHighSeverityChallenge {
 		t.Errorf("reason = %q, want unresolved_high_severity_challenge", result.Decision.ReasonCode)
 	}
@@ -661,7 +661,7 @@ func TestEdge_EmptyConfig(t *testing.T) {
 		},
 	}
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 	if result.Decision.Outcome != model.DecisionAccepted {
 		t.Errorf("outcome = %q, want accepted (all gates skipped)", result.Decision.Outcome)
 	}
@@ -675,7 +675,7 @@ func TestEdge_ConflictingEvidence(t *testing.T) {
 		makeEvidence("ev-3", model.EvidenceBuildCheck, model.EvidencePass),
 	}
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 	// behavioral: 1 passing test meets threshold
 	// But let's verify it still works
 	if result.Decision.Outcome == "" {
@@ -690,7 +690,7 @@ func TestEdge_OnlyInfoEvidence(t *testing.T) {
 		makeEvidence("ev-2", model.EvidenceTestSuite, model.EvidenceInfo),
 	}
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 	if result.Decision.Outcome != model.DecisionRejected {
 		t.Errorf("outcome = %q, want rejected (info doesn't satisfy gates)", result.Decision.Outcome)
 	}
@@ -703,7 +703,7 @@ func TestEdge_AllGatesReturnResults(t *testing.T) {
 		makeEvidence("ev-2", model.EvidenceTestSuite, model.EvidencePass),
 	}
 
-	result := Evaluate(ctx)
+	result := Evaluate(&ctx)
 
 	gateNames := make(map[string]bool)
 	for _, gr := range result.GateResults {

@@ -58,7 +58,7 @@ func (q *Queue) Close() error {
 }
 
 // Enqueue adds a job to the queue.
-func (q *Queue) Enqueue(ctx context.Context, job Job) error {
+func (q *Queue) Enqueue(ctx context.Context, job *Job) error {
 	data, err := json.Marshal(job)
 	if err != nil {
 		return fmt.Errorf("marshaling job: %w", err)

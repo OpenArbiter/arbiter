@@ -1,0 +1,53 @@
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosimple
+    - gocritic
+    - revive
+    - misspell
+    - unconvert
+    - unparam
+    - bodyclose
+
+linters-settings:
+  revive:
+    rules:
+      - name: exported
+        disabled: true  # we don't require comments on all exports
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - performance
+
+issues:
+  exclude-dirs:
+    - vendor
+  exclude-rules:
+    # JSONB fields are written by us — unmarshal errors on our own data are not actionable
+    - path: internal/store/postgres\.go
+      linters:
+        - errcheck
+      text: "json.Unmarshal"
+    # Test files can ignore WriteFile errors (writing to temp dirs)
+    - path: _test\.go
+      linters:
+        - errcheck
+      text: "os.WriteFile"
+    # Test helpers with fixed args are fine
+    - path: _test\.go
+      linters:
+        - unparam
+    # CLI tools legitimately use os.Exit
+    - path: cmd/
+      linters:
+        - gocritic
+      text: "exitAfterDefer"
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+run:
+  timeout: 5m

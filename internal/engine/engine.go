@@ -21,10 +21,10 @@ type EvalContext struct {
 
 // GateResult is the outcome of a single gate evaluation.
 type GateResult struct {
-	Gate    string           `json:"gate"`
-	Status  GateStatus       `json:"status"`
-	Mode    config.GateMode  `json:"mode"`
-	Reasons []string         `json:"reasons,omitempty"`
+	Gate    string          `json:"gate"`
+	Status  GateStatus      `json:"status"`
+	Mode    config.GateMode `json:"mode"`
+	Reasons []string        `json:"reasons,omitempty"`
 }
 
 // GateStatus is the outcome of evaluating a single gate.
@@ -45,11 +45,11 @@ type EvalResult struct {
 
 // Evaluate runs all gates against the given context and produces a Decision.
 // All gates run regardless of earlier failures — no short-circuiting.
-func Evaluate(ctx EvalContext) EvalResult {
+func Evaluate(ctx *EvalContext) EvalResult {
 	gates := []struct {
 		name string
 		mode config.GateMode
-		fn   func(EvalContext) GateResult
+		fn   func(*EvalContext) GateResult
 	}{
 		{"mechanical", ctx.Config.Gates.Mechanical.Mode, evaluateMechanical},
 		{"policy", ctx.Config.Gates.Policy.Mode, evaluatePolicy},
@@ -90,20 +90,19 @@ func Evaluate(ctx EvalContext) EvalResult {
 
 // --- Gate 1: Mechanical Checks ---
 
-func evaluateMechanical(ctx EvalContext) GateResult {
+func evaluateMechanical(ctx *EvalContext) GateResult {
 	requiredChecks := ctx.Config.Gates.Mechanical.Checks
 	if len(requiredChecks) == 0 {
 		return GateResult{Status: GatePassed}
 	}
 
-	// Build a set of evidence types that passed
 	passed := make(map[string]bool)
 	failed := make(map[string]bool)
-	for _, ev := range ctx.Evidence {
-		key := string(ev.EvidenceType)
-		if ev.Result == model.EvidencePass {
+	for i := range ctx.Evidence {
+		key := string(ctx.Evidence[i].EvidenceType)
+		if ctx.Evidence[i].Result == model.EvidencePass {
 			passed[key] = true
-		} else if ev.Result == model.EvidenceFail {
+		} else if ctx.Evidence[i].Result == model.EvidenceFail {
 			failed[key] = true
 		}
 	}
@@ -125,10 +124,10 @@ func evaluateMechanical(ctx EvalContext) GateResult {
 
 // --- Gate 2: Policy Checks ---
 
-func evaluatePolicy(ctx EvalContext) GateResult {
-	// Check for policy_check evidence that failed
+func evaluatePolicy(ctx *EvalContext) GateResult {
 	var reasons []string
-	for _, ev := range ctx.Evidence {
+	for i := range ctx.Evidence {
+		ev := &ctx.Evidence[i]
 		if ev.EvidenceType == model.EvidencePolicyCheck && ev.Result == model.EvidenceFail {
 			summary := "policy check failed"
 			if ev.Summary != nil {
@@ -146,12 +145,12 @@ func evaluatePolicy(ctx EvalContext) GateResult {
 
 // --- Gate 3: Behavioral Evidence ---
 
-func evaluateBehavioral(ctx EvalContext) GateResult {
+func evaluateBehavioral(ctx *EvalContext) GateResult {
 	minPassing := ctx.Config.Gates.Behavioral.MinPassingTests
 
 	passingCount := 0
-	for _, ev := range ctx.Evidence {
-		if ev.EvidenceType == model.EvidenceTestSuite && ev.Result == model.EvidencePass {
+	for i := range ctx.Evidence {
+		if ctx.Evidence[i].EvidenceType == model.EvidenceTestSuite && ctx.Evidence[i].Result == model.EvidencePass {
 			passingCount++
 		}
 	}
@@ -167,7 +166,7 @@ func evaluateBehavioral(ctx EvalContext) GateResult {
 
 // --- Gate 4: Challenges ---
 
-func evaluateChallenges(ctx EvalContext) GateResult {
+func evaluateChallenges(ctx *EvalContext) GateResult {
 	blockSeverity := ctx.Config.Gates.Challenges.BlockOnSeverity
 	if blockSeverity == "" {
 		blockSeverity = "high"
@@ -177,7 +176,8 @@ func evaluateChallenges(ctx EvalContext) GateResult {
 	threshold := severityRank[blockSeverity]
 
 	var reasons []string
-	for _, ch := range ctx.Challenges {
+	for i := range ctx.Challenges {
+		ch := &ctx.Challenges[i]
 		if ch.Status != model.ChallengeOpen {
 			continue
 		}
@@ -195,10 +195,9 @@ func evaluateChallenges(ctx EvalContext) GateResult {
 
 // --- Gate 5: Scope Validation ---
 
-func evaluateScope(ctx EvalContext) GateResult {
-	// Scope validation requires diff data from the adapter.
-	// For v1, we check if scope_match evidence exists.
-	for _, ev := range ctx.Evidence {
+func evaluateScope(ctx *EvalContext) GateResult {
+	for i := range ctx.Evidence {
+		ev := &ctx.Evidence[i]
 		if ev.EvidenceType == model.EvidenceScopeMatch {
 			if ev.Result == model.EvidenceFail {
 				summary := "scope mismatch detected"
@@ -214,7 +213,6 @@ func evaluateScope(ctx EvalContext) GateResult {
 		}
 	}
 
-	// No scope evidence available — can't validate
 	return GateResult{
 		Status:  GatePassed,
 		Reasons: []string{"no scope evidence available, skipping validation"},
@@ -223,7 +221,7 @@ func evaluateScope(ctx EvalContext) GateResult {
 
 // --- Decision Builder ---
 
-func buildDecision(ctx EvalContext, results []GateResult) model.Decision {
+func buildDecision(ctx *EvalContext, results []GateResult) model.Decision {
 	var failedGates []string
 	var warnedGates []string
 	var allReasons []string
@@ -239,14 +237,13 @@ func buildDecision(ctx EvalContext, results []GateResult) model.Decision {
 		}
 	}
 
-	// Collect evidence IDs for the decision audit trail
-	for _, ev := range ctx.Evidence {
-		linkedEvIDs = append(linkedEvIDs, ev.EvidenceID)
+	for i := range ctx.Evidence {
+		linkedEvIDs = append(linkedEvIDs, ctx.Evidence[i].EvidenceID)
 	}
 
 	var linkedChIDs []string
-	for _, ch := range ctx.Challenges {
-		linkedChIDs = append(linkedChIDs, ch.ChallengeID)
+	for i := range ctx.Challenges {
+		linkedChIDs = append(linkedChIDs, ctx.Challenges[i].ChallengeID)
 	}
 
 	var outcome model.DecisionOutcome
@@ -256,7 +253,7 @@ func buildDecision(ctx EvalContext, results []GateResult) model.Decision {
 	switch {
 	case len(failedGates) > 0:
 		outcome = model.DecisionRejected
-		reasonCode = pickReasonCode(failedGates, allReasons)
+		reasonCode = pickReasonCode(failedGates)
 		summary = fmt.Sprintf("Blocked by: %s. %s", strings.Join(failedGates, ", "), strings.Join(allReasons, "; "))
 	case len(warnedGates) > 0:
 		outcome = model.DecisionAccepted
@@ -281,8 +278,7 @@ func buildDecision(ctx EvalContext, results []GateResult) model.Decision {
 	}
 }
 
-func pickReasonCode(failedGates []string, reasons []string) model.ReasonCode {
-	// Pick the most specific reason code based on what failed
+func pickReasonCode(failedGates []string) model.ReasonCode {
 	for _, gate := range failedGates {
 		switch gate {
 		case "mechanical":

@@ -237,14 +237,14 @@ func allScenarios() []scenario {
 	}
 }
 
-func runScenarios(ctx context.Context, name string) {
+func runScenarios(_ context.Context, name string) {
 	scenarios := allScenarios()
 
 	if name != "all" {
 		found := false
-		for _, s := range scenarios {
-			if s.name == name {
-				scenarios = []scenario{s}
+		for i := range scenarios {
+			if scenarios[i].name == name {
+				scenarios = []scenario{scenarios[i]}
 				found = true
 				break
 			}
@@ -258,7 +258,8 @@ func runScenarios(ctx context.Context, name string) {
 	passed := 0
 	failed := 0
 
-	for _, s := range scenarios {
+	for i := range scenarios {
+		s := &scenarios[i]
 		fmt.Printf("\n━━━ Scenario: %s ━━━\n", s.name)
 
 		evalCtx := engine.EvalContext{
@@ -269,7 +270,7 @@ func runScenarios(ctx context.Context, name string) {
 			Config:     s.config,
 		}
 
-		result := engine.Evaluate(evalCtx)
+		result := engine.Evaluate(&evalCtx)
 
 		// Print gate results
 		for _, gr := range result.GateResults {
@@ -334,7 +335,7 @@ func runLive(ctx context.Context) {
 	}
 	defer s.Close()
 
-	fmt.Println("Connected to database. Running live scenario...\n")
+	fmt.Println("Connected to database. Running live scenario...")
 
 	// Create task
 	task := baseTask()
@@ -399,7 +400,7 @@ func runLive(ctx context.Context) {
 		Challenges: storedChallenges,
 		Config:     config.DefaultConfig(),
 	}
-	result := engine.Evaluate(evalCtx)
+	result := engine.Evaluate(&evalCtx)
 
 	// Store decision
 	decision := result.Decision

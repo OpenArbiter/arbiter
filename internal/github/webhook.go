@@ -74,7 +74,9 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ID int64 `json:"id"`
 		} `json:"installation"`
 	}
-	json.Unmarshal(body, &payload)
+	if err := json.Unmarshal(body, &payload); err != nil {
+		slog.Warn("could not parse installation ID from webhook", "error", err)
+	}
 
 	job := queue.Job{
 		ID:             deliveryID,
@@ -84,7 +86,7 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:      time.Now().UTC(),
 	}
 
-	if err := h.queue.Enqueue(r.Context(), job); err != nil {
+	if err := h.queue.Enqueue(r.Context(), &job); err != nil {
 		slog.Error("enqueueing webhook job", "error", err, "delivery_id", deliveryID)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -124,7 +126,9 @@ func mapEventToJobType(eventType string, body []byte) (queue.JobType, error) {
 		var pr struct {
 			Action string `json:"action"`
 		}
-		json.Unmarshal(body, &pr)
+		if err := json.Unmarshal(body, &pr); err != nil {
+			return "", fmt.Errorf("parsing pull_request payload: %w", err)
+		}
 		switch pr.Action {
 		case "opened", "reopened":
 			return queue.JobPROpened, nil
@@ -139,7 +143,9 @@ func mapEventToJobType(eventType string, body []byte) (queue.JobType, error) {
 		var cr struct {
 			Action string `json:"action"`
 		}
-		json.Unmarshal(body, &cr)
+		if err := json.Unmarshal(body, &cr); err != nil {
+			return "", fmt.Errorf("parsing check_run payload: %w", err)
+		}
 		if cr.Action == "completed" {
 			return queue.JobCheckRunCompleted, nil
 		}

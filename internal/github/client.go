@@ -152,7 +152,7 @@ func (c *Client) GetFileContent(ctx context.Context, installationID int64, owner
 }
 
 // CreateCheckRun creates a new check run on a commit.
-func (c *Client) CreateCheckRun(ctx context.Context, installationID int64, owner, repo, headSHA string, opts CheckRunOpts) (int64, error) {
+func (c *Client) CreateCheckRun(ctx context.Context, installationID int64, owner, repo, headSHA string, opts *CheckRunOpts) (int64, error) {
 	client, err := c.ghClient(ctx, installationID)
 	if err != nil {
 		return 0, err

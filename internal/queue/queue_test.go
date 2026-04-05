@@ -48,7 +48,7 @@ func TestQueue_EnqueueDequeue(t *testing.T) {
 		CreatedAt:      time.Now().UTC(),
 	}
 
-	if err := q.Enqueue(ctx, job); err != nil {
+	if err := q.Enqueue(ctx, &job); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
 
@@ -82,7 +82,7 @@ func TestQueue_FIFO(t *testing.T) {
 			Payload:        json.RawMessage(`{}`),
 			CreatedAt:      time.Now().UTC(),
 		}
-		q.Enqueue(ctx, job)
+		q.Enqueue(ctx, &job)
 	}
 
 	for _, expected := range []string{"first", "second", "third"} {
@@ -118,8 +118,8 @@ func TestQueue_Len(t *testing.T) {
 		t.Errorf("initial len = %d, want 0", n)
 	}
 
-	q.Enqueue(ctx, Job{ID: "a", Type: JobPROpened, Payload: json.RawMessage(`{}`), CreatedAt: time.Now()})
-	q.Enqueue(ctx, Job{ID: "b", Type: JobPROpened, Payload: json.RawMessage(`{}`), CreatedAt: time.Now()})
+	q.Enqueue(ctx, &Job{ID: "a", Type: JobPROpened, Payload: json.RawMessage(`{}`), CreatedAt: time.Now()})
+	q.Enqueue(ctx, &Job{ID: "b", Type: JobPROpened, Payload: json.RawMessage(`{}`), CreatedAt: time.Now()})
 
 	n, _ = q.Len(ctx)
 	if n != 2 {
