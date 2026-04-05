@@ -29,18 +29,13 @@ func main() {
 	switch cmd {
 	case "scenario":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: harness scenario <name>")
-			fmt.Println("\nAvailable scenarios:")
-			fmt.Println("  all-pass        — all evidence passes, no challenges")
-			fmt.Println("  build-fails     — build check fails")
-			fmt.Println("  test-fails      — test suite fails")
-			fmt.Println("  no-evidence     — no evidence submitted")
-			fmt.Println("  challenge       — open high-severity challenge blocks")
-			fmt.Println("  challenge-resolved — challenge resolved, passes")
-			fmt.Println("  warn-mode       — failing gate in warn mode still passes")
-			fmt.Println("  scope-mismatch  — scope validation fails")
-			fmt.Println("  mixed-signals   — some pass, some fail")
-			fmt.Println("  all             — run all scenarios")
+			fmt.Println("Usage: harness scenario <name|all>")
+			fmt.Println("\nRun 'harness scenario all' to run all scenarios.")
+			fmt.Println("Or specify a scenario name. Available scenarios:")
+			for i := range allScenarios() {
+				s := &allScenarios()[i]
+				fmt.Printf("  %s\n", s.name)
+			}
 			os.Exit(1)
 		}
 		runScenarios(ctx, os.Args[2])
@@ -149,7 +144,39 @@ func allScenarios() []scenario {
 	warnCfg.Gates.Mechanical.Mode = config.GateWarn
 	warnCfg.Gates.Behavioral.Mode = config.GateWarn
 
+	allSkipCfg := config.DefaultConfig()
+	allSkipCfg.Gates.Mechanical.Mode = config.GateSkip
+	allSkipCfg.Gates.Policy.Mode = config.GateSkip
+	allSkipCfg.Gates.Behavioral.Mode = config.GateSkip
+	allSkipCfg.Gates.Challenges.Mode = config.GateSkip
+	allSkipCfg.Gates.Scope.Mode = config.GateSkip
+
+	allWarnCfg := config.DefaultConfig()
+	allWarnCfg.Gates.Mechanical.Mode = config.GateWarn
+	allWarnCfg.Gates.Policy.Mode = config.GateWarn
+	allWarnCfg.Gates.Behavioral.Mode = config.GateWarn
+	allWarnCfg.Gates.Challenges.Mode = config.GateWarn
+	allWarnCfg.Gates.Scope.Mode = config.GateWarn
+
+	scopeEnforceCfg := config.DefaultConfig()
+	scopeEnforceCfg.Gates.Scope.Mode = config.GateEnforce
+
+	blockMediumCfg := config.DefaultConfig()
+	blockMediumCfg.Gates.Challenges.BlockOnSeverity = "medium"
+
+	blockLowCfg := config.DefaultConfig()
+	blockLowCfg.Gates.Challenges.BlockOnSeverity = "low"
+
+	threeTestsCfg := config.DefaultConfig()
+	threeTestsCfg.Gates.Behavioral.MinPassingTests = 3
+
+	noChecksCfg := config.DefaultConfig()
+	noChecksCfg.Gates.Mechanical.Checks = nil
+
 	return []scenario{
+		// =====================================================================
+		// Basic happy/sad paths
+		// =====================================================================
 		{
 			name: "all-pass",
 			evidence: []model.Evidence{
@@ -183,8 +210,12 @@ func allScenarios() []scenario {
 			config:      defaultCfg,
 			wantOutcome: model.DecisionRejected,
 		},
+
+		// =====================================================================
+		// Challenge scenarios
+		// =====================================================================
 		{
-			name: "challenge",
+			name: "challenge-open-high-blocks",
 			evidence: []model.Evidence{
 				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
 				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
@@ -196,7 +227,43 @@ func allScenarios() []scenario {
 			wantOutcome: model.DecisionRejected,
 		},
 		{
-			name: "challenge-resolved",
+			name: "challenge-open-medium-passes-default",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
+			},
+			challenges: []model.Challenge{
+				ch("ch-1", model.SeverityMedium, model.ChallengeOpen, "Could use better error handling"),
+			},
+			config:      defaultCfg,
+			wantOutcome: model.DecisionAccepted, // default blocks on high only
+		},
+		{
+			name: "challenge-open-medium-blocks-when-configured",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
+			},
+			challenges: []model.Challenge{
+				ch("ch-1", model.SeverityMedium, model.ChallengeOpen, "Missing error handling"),
+			},
+			config:      blockMediumCfg,
+			wantOutcome: model.DecisionRejected,
+		},
+		{
+			name: "challenge-open-low-blocks-when-configured",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
+			},
+			challenges: []model.Challenge{
+				ch("ch-1", model.SeverityLow, model.ChallengeOpen, "Minor style issue"),
+			},
+			config:      blockLowCfg,
+			wantOutcome: model.DecisionRejected,
+		},
+		{
+			name: "challenge-resolved-passes",
 			evidence: []model.Evidence{
 				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
 				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
@@ -208,23 +275,207 @@ func allScenarios() []scenario {
 			wantOutcome: model.DecisionAccepted,
 		},
 		{
-			name:        "warn-mode",
-			evidence:    nil, // no evidence — gates would fail
-			config:      warnCfg,
+			name: "challenge-dismissed-passes",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
+			},
+			challenges: []model.Challenge{
+				ch("ch-1", model.SeverityHigh, model.ChallengeDismissed, "Not relevant to this change"),
+			},
+			config:      defaultCfg,
 			wantOutcome: model.DecisionAccepted,
 		},
 		{
-			name: "scope-mismatch",
+			name: "multiple-challenges-one-open",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
+			},
+			challenges: []model.Challenge{
+				ch("ch-1", model.SeverityHigh, model.ChallengeResolved, "First issue fixed"),
+				ch("ch-2", model.SeverityHigh, model.ChallengeOpen, "Second issue still open"),
+				ch("ch-3", model.SeverityLow, model.ChallengeDismissed, "Not relevant"),
+			},
+			config:      defaultCfg,
+			wantOutcome: model.DecisionRejected,
+		},
+
+		// =====================================================================
+		// Gate mode behavior
+		// =====================================================================
+		{
+			name:        "all-gates-skipped",
+			evidence:    nil,
+			config:      allSkipCfg,
+			wantOutcome: model.DecisionAccepted,
+		},
+		{
+			name:        "all-gates-warn-no-evidence",
+			evidence:    nil,
+			config:      allWarnCfg,
+			wantOutcome: model.DecisionAccepted,
+		},
+		{
+			name: "warn-mode-with-failures",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidenceFail, "Build failed"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidenceFail, "Tests failed"),
+				ev("ev-3", model.EvidencePolicyCheck, model.EvidenceFail, "Policy violated"),
+				ev("ev-4", model.EvidenceScopeMatch, model.EvidenceFail, "Scope exceeded"),
+			},
+			challenges: []model.Challenge{
+				ch("ch-1", model.SeverityHigh, model.ChallengeOpen, "Everything is wrong"),
+			},
+			config:      allWarnCfg,
+			wantOutcome: model.DecisionAccepted, // all warn mode — nothing blocks
+		},
+		{
+			name: "one-enforce-gate-fails-rest-warn",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidenceFail, "Build failed"),
+			},
+			config: func() config.Config {
+				c := allWarnCfg
+				c.Gates.Mechanical.Mode = config.GateEnforce // only this one enforces
+				return c
+			}(),
+			wantOutcome: model.DecisionRejected,
+		},
+
+		// =====================================================================
+		// Scope validation
+		// =====================================================================
+		{
+			name: "scope-mismatch-enforced",
 			evidence: []model.Evidence{
 				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
 				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
 				ev("ev-3", model.EvidenceScopeMatch, model.EvidenceFail, "Changed db/migrations.go outside declared scope"),
 			},
-			config:      func() config.Config { c := defaultCfg; c.Gates.Scope.Mode = config.GateEnforce; return c }(),
+			config:      scopeEnforceCfg,
 			wantOutcome: model.DecisionRejected,
 		},
 		{
-			name: "mixed-signals",
+			name: "scope-mismatch-warn-only",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
+				ev("ev-3", model.EvidenceScopeMatch, model.EvidenceFail, "Changed db/migrations.go outside declared scope"),
+			},
+			config:      defaultCfg, // scope is warn by default
+			wantOutcome: model.DecisionAccepted,
+		},
+		{
+			name: "scope-passes-enforced",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
+				ev("ev-3", model.EvidenceScopeMatch, model.EvidencePass, "All changes within declared scope"),
+			},
+			config:      scopeEnforceCfg,
+			wantOutcome: model.DecisionAccepted,
+		},
+		{
+			name: "no-scope-evidence-enforced",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
+			},
+			config:      scopeEnforceCfg,
+			wantOutcome: model.DecisionAccepted, // no scope evidence = pass (can't validate)
+		},
+
+		// =====================================================================
+		// Policy scenarios
+		// =====================================================================
+		{
+			name: "policy-violation",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
+				ev("ev-3", model.EvidencePolicyCheck, model.EvidenceFail, "Blocked dependency: lodash@3.x has known CVE"),
+			},
+			config:      defaultCfg,
+			wantOutcome: model.DecisionRejected,
+		},
+		{
+			name: "multiple-policy-violations",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
+				ev("ev-3", model.EvidencePolicyCheck, model.EvidenceFail, "Blocked dependency"),
+				ev("ev-4", model.EvidencePolicyCheck, model.EvidenceFail, "Direct push to protected path"),
+			},
+			config:      defaultCfg,
+			wantOutcome: model.DecisionRejected,
+		},
+		{
+			name: "policy-passes",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
+				ev("ev-3", model.EvidencePolicyCheck, model.EvidencePass, "All policies satisfied"),
+			},
+			config:      defaultCfg,
+			wantOutcome: model.DecisionAccepted,
+		},
+
+		// =====================================================================
+		// Behavioral evidence thresholds
+		// =====================================================================
+		{
+			name: "high-test-threshold-not-met",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Unit tests passed"),
+				ev("ev-3", model.EvidenceTestSuite, model.EvidencePass, "Integration tests passed"),
+			},
+			config:      threeTestsCfg, // needs 3, only has 2
+			wantOutcome: model.DecisionRejected,
+		},
+		{
+			name: "high-test-threshold-met",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Unit tests passed"),
+				ev("ev-3", model.EvidenceTestSuite, model.EvidencePass, "Integration tests passed"),
+				ev("ev-4", model.EvidenceTestSuite, model.EvidencePass, "E2E tests passed"),
+			},
+			config:      threeTestsCfg,
+			wantOutcome: model.DecisionAccepted,
+		},
+		{
+			name: "failing-tests-dont-count-toward-threshold",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Unit tests passed"),
+				ev("ev-3", model.EvidenceTestSuite, model.EvidenceFail, "Integration tests failed"),
+				ev("ev-4", model.EvidenceTestSuite, model.EvidencePass, "E2E tests passed"),
+				ev("ev-5", model.EvidenceTestSuite, model.EvidenceFail, "Smoke tests failed"),
+			},
+			config:      threeTestsCfg, // needs 3 passing, has 2 pass + 2 fail
+			wantOutcome: model.DecisionRejected,
+		},
+
+		// =====================================================================
+		// Mixed/complex scenarios
+		// =====================================================================
+		{
+			name: "everything-passes-with-rich-evidence",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "All 142 tests passed"),
+				ev("ev-3", model.EvidencePolicyCheck, model.EvidencePass, "All policies satisfied"),
+				ev("ev-4", model.EvidenceSecurityScan, model.EvidencePass, "No vulnerabilities found"),
+				ev("ev-5", model.EvidenceScopeMatch, model.EvidencePass, "All changes within scope"),
+				ev("ev-6", model.EvidenceBenchmarkCheck, model.EvidencePass, "No performance regression"),
+			},
+			config:      scopeEnforceCfg,
+			wantOutcome: model.DecisionAccepted,
+		},
+		{
+			name: "mixed-signals-build-pass-tests-mixed",
 			evidence: []model.Evidence{
 				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
 				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Unit tests passed"),
@@ -232,7 +483,86 @@ func allScenarios() []scenario {
 				ev("ev-4", model.EvidenceSecurityScan, model.EvidenceWarn, "1 low-severity finding"),
 			},
 			config:      defaultCfg,
-			wantOutcome: model.DecisionRejected, // build_check failed due to test_suite fail
+			wantOutcome: model.DecisionRejected, // test_suite has a fail → mechanical gate fails
+		},
+		{
+			name: "only-info-and-warn-evidence",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidenceInfo, "Build info only"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidenceWarn, "Tests warn only"),
+				ev("ev-3", model.EvidenceSecurityScan, model.EvidenceInfo, "Scan info"),
+			},
+			config:      defaultCfg,
+			wantOutcome: model.DecisionRejected, // info/warn don't satisfy gates
+		},
+		{
+			name: "no-mechanical-checks-configured",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
+			},
+			config:      noChecksCfg,
+			wantOutcome: model.DecisionAccepted, // no checks required → mechanical passes
+		},
+		{
+			name: "security-scan-fails-but-not-gated",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests passed"),
+				ev("ev-3", model.EvidenceSecurityScan, model.EvidenceFail, "3 critical vulnerabilities"),
+			},
+			config:      defaultCfg,
+			wantOutcome: model.DecisionAccepted, // security scan isn't a gate (yet)
+		},
+		{
+			name: "everything-wrong-all-gates-fail",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidenceFail, "Build failed"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidenceFail, "All tests failed"),
+				ev("ev-3", model.EvidencePolicyCheck, model.EvidenceFail, "Policy violated"),
+				ev("ev-4", model.EvidenceScopeMatch, model.EvidenceFail, "Scope exceeded"),
+			},
+			challenges: []model.Challenge{
+				ch("ch-1", model.SeverityHigh, model.ChallengeOpen, "Complete rewrite not requested"),
+				ch("ch-2", model.SeverityHigh, model.ChallengeOpen, "Tests deleted"),
+			},
+			config:      scopeEnforceCfg,
+			wantOutcome: model.DecisionRejected,
+		},
+
+		// =====================================================================
+		// Agent-specific scenarios
+		// =====================================================================
+		{
+			name: "agent-submits-passing-work",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Agent-written tests pass"),
+				ev("ev-3", model.EvidenceTestSuite, model.EvidencePass, "Existing tests still pass"),
+			},
+			config:      defaultCfg,
+			wantOutcome: model.DecisionAccepted,
+		},
+		{
+			name: "agent-submits-but-human-challenges",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests pass"),
+			},
+			challenges: []model.Challenge{
+				ch("ch-1", model.SeverityHigh, model.ChallengeOpen, "Agent deleted error handling to make tests pass"),
+			},
+			config:      defaultCfg,
+			wantOutcome: model.DecisionRejected,
+		},
+		{
+			name: "agent-submits-with-scope-creep",
+			evidence: []model.Evidence{
+				ev("ev-1", model.EvidenceBuildCheck, model.EvidencePass, "Build succeeded"),
+				ev("ev-2", model.EvidenceTestSuite, model.EvidencePass, "Tests pass"),
+				ev("ev-3", model.EvidenceScopeMatch, model.EvidenceFail, "Agent modified 47 files outside task scope"),
+			},
+			config:      scopeEnforceCfg,
+			wantOutcome: model.DecisionRejected,
 		},
 	}
 }
