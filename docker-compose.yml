@@ -7,6 +7,11 @@ services:
       ARBITER_DB_URL: postgres://arbiter:arbiter@postgres:5432/arbiter?sslmode=disable
       ARBITER_REDIS_URL: redis://redis:6379
       ARBITER_LOG_LEVEL: info
+      ARBITER_WEBHOOK_SECRET: ${ARBITER_WEBHOOK_SECRET}
+      ARBITER_GITHUB_APP_ID: ${ARBITER_GITHUB_APP_ID}
+      ARBITER_GITHUB_PRIVATE_KEY_PATH: /app/private-key.pem
+    volumes:
+      - ${ARBITER_GITHUB_PRIVATE_KEY_PATH:-./private-key.pem}:/app/private-key.pem:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,7 +1,7 @@
 # Build output
 bin/
-arbiter
-harness
+/arbiter
+/harness
 *.exe
 
 # Test output
