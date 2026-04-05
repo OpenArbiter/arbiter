@@ -4,6 +4,9 @@
 build:
 	go build -o bin/arbiter ./cmd/arbiter/
 
+build-harness:
+	go build -o bin/harness ./cmd/harness/
+
 # Tests
 test:
 	go test -race -coverprofile=coverage.out ./...
@@ -42,6 +45,13 @@ migrate:
 
 migrate-new:
 	atlas migrate diff --to "file://migrations" --dev-url "docker://postgres/16"
+
+# Harness
+harness-scenarios:
+	go run ./cmd/harness/ scenario all
+
+harness-live:
+	go run ./cmd/harness/ live
 
 # Cleanup
 clean:

@@ -1,6 +1,7 @@
 # Build output
 bin/
 arbiter
+harness
 *.exe
 
 # Test output
