@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	gh "github.com/openarbiter/arbiter/internal/github"
 	"github.com/openarbiter/arbiter/internal/queue"
 	"github.com/openarbiter/arbiter/internal/store"
@@ -34,10 +36,63 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	// Check for subcommands
+	if len(os.Args) > 1 && os.Args[1] == "migrate" {
+		if err := runMigrate(ctx); err != nil {
+			slog.Error("migration failed", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := run(ctx, cancel); err != nil && ctx.Err() == nil {
 		slog.Error("fatal error", "error", err)
 		os.Exit(1)
 	}
+}
+
+func runMigrate(ctx context.Context) error {
+	dbURL := requireEnv("ARBITER_DB_URL")
+	migrationsDir := os.Getenv("ARBITER_MIGRATIONS_DIR")
+	if migrationsDir == "" {
+		migrationsDir = "/migrations"
+	}
+
+	slog.Info("running migrations", "dir", migrationsDir, "db", "***")
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		return fmt.Errorf("connecting to database: %w", err)
+	}
+	defer pool.Close()
+
+	// Read and execute migration files in order
+	entries, err := os.ReadDir(migrationsDir)
+	if err != nil {
+		return fmt.Errorf("reading migrations dir: %w", err)
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		path := migrationsDir + "/" + entry.Name()
+		slog.Info("applying migration", "file", entry.Name())
+
+		sql, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("reading %s: %w", entry.Name(), err)
+		}
+
+		if _, err := pool.Exec(ctx, string(sql)); err != nil {
+			return fmt.Errorf("executing %s: %w", entry.Name(), err)
+		}
+
+		slog.Info("migration applied", "file", entry.Name())
+	}
+
+	slog.Info("all migrations complete")
+	return nil
 }
 
 func run(ctx context.Context, cancel context.CancelFunc) error {
