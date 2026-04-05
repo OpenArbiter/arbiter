@@ -1,3 +1,6 @@
+-include .env
+export
+
 .PHONY: build test test-integration test-e2e test-all lint fmt vet \
        docker-up docker-down docker-build migrate \
        harness-scenarios harness-live \
