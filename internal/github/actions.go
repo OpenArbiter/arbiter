@@ -167,14 +167,14 @@ func (c *Client) execClose(ctx context.Context, actCtx *ActionContext) error {
 
 func (c *Client) execWebhook(ctx context.Context, actCtx *ActionContext, action *config.Action) error {
 	payload := map[string]any{
-		"outcome":    string(actCtx.Decision.Outcome),
-		"reason":     string(actCtx.Decision.ReasonCode),
-		"summary":    actCtx.Decision.Summary,
-		"confidence": actCtx.Confidence,
+		"outcome":     string(actCtx.Decision.Outcome),
+		"reason":      string(actCtx.Decision.ReasonCode),
+		"summary":     actCtx.Decision.Summary,
+		"confidence":  actCtx.Confidence,
 		"proposal_id": actCtx.Decision.ProposalID,
-		"pr_number":  actCtx.PRNumber,
-		"repo":       actCtx.Owner + "/" + actCtx.Repo,
-		"head_sha":   actCtx.HeadSHA,
+		"pr_number":   actCtx.PRNumber,
+		"repo":        actCtx.Owner + "/" + actCtx.Repo,
+		"head_sha":    actCtx.HeadSHA,
 	}
 
 	data, err := json.Marshal(payload)
