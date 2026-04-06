@@ -403,10 +403,14 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 		return fmt.Errorf("listing challenges: %w", err)
 	}
 
-	// Load config from the base branch
+	// Load config from the base branch (fall back to default branch)
 	cfg := config.DefaultConfig()
-	if baseRef != "" {
-		configData, err := p.client.GetFileContent(ctx, installID, owner, repo, ".arbiter.yml", baseRef)
+	configRef := baseRef
+	if configRef == "" {
+		configRef = "main"
+	}
+	{
+		configData, err := p.client.GetFileContent(ctx, installID, owner, repo, ".arbiter.yml", configRef)
 		if err != nil {
 			slog.WarnContext(ctx, "could not read .arbiter.yml", "error", err)
 		} else if configData != nil {
