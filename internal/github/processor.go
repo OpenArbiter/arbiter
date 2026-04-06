@@ -173,8 +173,16 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 	proposalID := fmt.Sprintf("gh:%s:pr:%d:sha:%s", repo.FullName, pr.Number, pr.Head.SHA)
 
 	// Check if we already processed this exact SHA (idempotency)
-	_, err = p.store.GetProposal(ctx, proposalID)
+	existing, err := p.store.GetProposal(ctx, proposalID)
 	if err == nil {
+		// Proposal exists — if it was withdrawn (PR closed then reopened), reopen it
+		if existing.Status == model.ProposalWithdrawn {
+			slog.InfoContext(ctx, "reopening withdrawn proposal", "proposal_id", proposalID)
+			if err := p.store.UpdateProposalStatus(ctx, proposalID, model.ProposalOpen); err != nil {
+				return fmt.Errorf("reopening proposal: %w", err)
+			}
+			return p.evaluateProposal(ctx, proposalID, installID, repo.Owner.Login, repo.Name, pr.Head.SHA, pr.Base.Ref, pr.Number)
+		}
 		slog.InfoContext(ctx, "proposal already exists, skipping", "proposal_id", proposalID)
 		return nil
 	}
@@ -288,8 +296,13 @@ func (p *Processor) handleCheckRunCompleted(ctx context.Context, job *queue.Job)
 	installID := event.Installation.ID
 	tenantID := fmt.Sprintf("github:%d", installID)
 
+	slog.InfoContext(ctx, "processing check_run",
+		"name", cr.Name,
+		"conclusion", cr.Conclusion,
+		"head_sha", cr.HeadSHA,
+	)
+
 	// Find the proposal for this SHA
-	// We need to search open proposals for this tenant
 	proposals, err := p.store.ListOpenProposalsByTenant(ctx, tenantID, 100, 0)
 	if err != nil {
 		return fmt.Errorf("listing proposals: %w", err)
@@ -308,7 +321,11 @@ func (p *Processor) handleCheckRunCompleted(ctx context.Context, job *queue.Job)
 	}
 
 	if matchedProposal == nil {
-		slog.DebugContext(ctx, "no matching proposal for check run", "head_sha", cr.HeadSHA)
+		slog.InfoContext(ctx, "no matching proposal for check run",
+			"head_sha", cr.HeadSHA,
+			"tenant_id", tenantID,
+			"open_proposals", len(proposals),
+		)
 		return nil
 	}
 
