@@ -196,11 +196,11 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
-	// API endpoints for manual operations
+	// API endpoints — read endpoints are open, write endpoints require GitHub token
 	api := gh.NewAPI(pgStore)
 	mux.HandleFunc("/api/proposals", api.HandleListProposals)
-	mux.HandleFunc("/api/challenge", api.HandleCreateChallenge)
-	mux.HandleFunc("/api/challenge/resolve", api.HandleResolveChallenge)
+	mux.Handle("/api/challenge", gh.NewAPIAuth(http.HandlerFunc(api.HandleCreateChallenge)))
+	mux.Handle("/api/challenge/resolve", gh.NewAPIAuth(http.HandlerFunc(api.HandleResolveChallenge)))
 
 	server := &http.Server{
 		Addr:         listenAddr,
