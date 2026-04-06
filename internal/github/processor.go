@@ -217,6 +217,46 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 		return fmt.Errorf("creating proposal: %w", err)
 	}
 
+	// Carry forward unresolved challenges from previous proposals on this PR.
+	// Without this, an attacker can push an empty commit to escape challenges.
+	previousProposals, err := p.store.ListProposalsByTask(ctx, taskID)
+	if err != nil {
+		slog.WarnContext(ctx, "could not list previous proposals", "error", err)
+	}
+	for i := range previousProposals {
+		if previousProposals[i].ProposalID == proposalID {
+			continue // skip the one we just created
+		}
+		oldChallenges, err := p.store.ListOpenChallengesByProposal(ctx, previousProposals[i].ProposalID)
+		if err != nil {
+			slog.WarnContext(ctx, "could not list challenges", "error", err)
+			continue
+		}
+		for j := range oldChallenges {
+			carried := model.Challenge{
+				ChallengeID:   fmt.Sprintf("ch:%s:carry:%d", proposalID, time.Now().UnixNano()),
+				ProposalID:    proposalID,
+				TenantID:      tenantID,
+				RaisedBy:      oldChallenges[j].RaisedBy,
+				ChallengeType: oldChallenges[j].ChallengeType,
+				Target:        oldChallenges[j].Target,
+				Severity:      oldChallenges[j].Severity,
+				Summary:       fmt.Sprintf("[carried from previous commit] %s", oldChallenges[j].Summary),
+				Status:        model.ChallengeOpen,
+				CreatedAt:     time.Now().UTC(),
+			}
+			if err := p.store.CreateChallenge(ctx, &carried); err != nil {
+				slog.WarnContext(ctx, "could not carry forward challenge", "error", err)
+			} else {
+				slog.InfoContext(ctx, "challenge carried forward",
+					"old_challenge", oldChallenges[j].ChallengeID,
+					"new_challenge", carried.ChallengeID,
+					"severity", carried.Severity,
+				)
+			}
+		}
+	}
+
 	// Create initial check run (in_progress)
 	_, err = p.client.CreateCheckRun(ctx, installID, repo.Owner.Login, repo.Name, pr.Head.SHA, &CheckRunOpts{
 		Name:       "openarbiter/trust",
