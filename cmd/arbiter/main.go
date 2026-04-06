@@ -196,6 +196,12 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
+	// API endpoints for manual operations
+	api := gh.NewAPI(pgStore)
+	mux.HandleFunc("/api/proposals", api.HandleListProposals)
+	mux.HandleFunc("/api/challenge", api.HandleCreateChallenge)
+	mux.HandleFunc("/api/challenge/resolve", api.HandleResolveChallenge)
+
 	server := &http.Server{
 		Addr:         listenAddr,
 		Handler:      mux,
