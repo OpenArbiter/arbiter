@@ -1,7 +1,8 @@
 -- Create core tables for Arbiter trust layer
 -- All tables follow append-only pattern: no UPDATEs or DELETEs in normal operation
+-- Idempotent: safe to run multiple times
 
-CREATE TABLE principals (
+CREATE TABLE IF NOT EXISTS principals (
     principal_id   TEXT PRIMARY KEY,
     principal_type TEXT NOT NULL CHECK (principal_type IN ('human', 'agent', 'service')),
     display_name   TEXT NOT NULL,
@@ -9,7 +10,7 @@ CREATE TABLE principals (
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE tasks (
+CREATE TABLE IF NOT EXISTS tasks (
     task_id          TEXT PRIMARY KEY,
     tenant_id        TEXT NOT NULL,
     title            TEXT NOT NULL,
@@ -28,10 +29,10 @@ CREATE TABLE tasks (
     parent_task_id   TEXT REFERENCES tasks(task_id)
 );
 
-CREATE INDEX idx_tasks_tenant ON tasks(tenant_id);
-CREATE INDEX idx_tasks_created ON tasks(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_tenant ON tasks(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_created ON tasks(created_at DESC);
 
-CREATE TABLE proposals (
+CREATE TABLE IF NOT EXISTS proposals (
     proposal_id          TEXT PRIMARY KEY,
     task_id              TEXT NOT NULL REFERENCES tasks(task_id),
     tenant_id            TEXT NOT NULL,
@@ -51,12 +52,12 @@ CREATE TABLE proposals (
     strategy_hint            TEXT
 );
 
-CREATE INDEX idx_proposals_task ON proposals(task_id);
-CREATE INDEX idx_proposals_tenant ON proposals(tenant_id);
-CREATE INDEX idx_proposals_status ON proposals(status) WHERE status = 'open';
-CREATE INDEX idx_proposals_created ON proposals(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_proposals_task ON proposals(task_id);
+CREATE INDEX IF NOT EXISTS idx_proposals_tenant ON proposals(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status) WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS idx_proposals_created ON proposals(created_at DESC);
 
-CREATE TABLE evidence (
+CREATE TABLE IF NOT EXISTS evidence (
     evidence_id    TEXT PRIMARY KEY,
     proposal_id    TEXT NOT NULL REFERENCES proposals(proposal_id),
     tenant_id      TEXT NOT NULL,
@@ -77,12 +78,12 @@ CREATE TABLE evidence (
     expires_at     TIMESTAMPTZ
 );
 
-CREATE INDEX idx_evidence_proposal ON evidence(proposal_id);
-CREATE INDEX idx_evidence_tenant ON evidence(tenant_id);
-CREATE INDEX idx_evidence_type ON evidence(evidence_type);
-CREATE INDEX idx_evidence_created ON evidence(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_evidence_proposal ON evidence(proposal_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_tenant ON evidence(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_type ON evidence(evidence_type);
+CREATE INDEX IF NOT EXISTS idx_evidence_created ON evidence(created_at DESC);
 
-CREATE TABLE challenges (
+CREATE TABLE IF NOT EXISTS challenges (
     challenge_id       TEXT PRIMARY KEY,
     proposal_id        TEXT NOT NULL REFERENCES proposals(proposal_id),
     tenant_id          TEXT NOT NULL,
@@ -105,12 +106,12 @@ CREATE TABLE challenges (
     resolved_at        TIMESTAMPTZ
 );
 
-CREATE INDEX idx_challenges_proposal ON challenges(proposal_id);
-CREATE INDEX idx_challenges_tenant ON challenges(tenant_id);
-CREATE INDEX idx_challenges_open ON challenges(proposal_id) WHERE status = 'open';
-CREATE INDEX idx_challenges_created ON challenges(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_challenges_proposal ON challenges(proposal_id);
+CREATE INDEX IF NOT EXISTS idx_challenges_tenant ON challenges(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_challenges_open ON challenges(proposal_id) WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS idx_challenges_created ON challenges(created_at DESC);
 
-CREATE TABLE decisions (
+CREATE TABLE IF NOT EXISTS decisions (
     decision_id          TEXT PRIMARY KEY,
     proposal_id          TEXT NOT NULL REFERENCES proposals(proposal_id),
     tenant_id            TEXT NOT NULL,
@@ -131,7 +132,7 @@ CREATE TABLE decisions (
     expires_at           TIMESTAMPTZ
 );
 
-CREATE INDEX idx_decisions_proposal ON decisions(proposal_id);
-CREATE INDEX idx_decisions_tenant ON decisions(tenant_id);
-CREATE INDEX idx_decisions_outcome ON decisions(outcome);
-CREATE INDEX idx_decisions_created ON decisions(decided_at DESC);
+CREATE INDEX IF NOT EXISTS idx_decisions_proposal ON decisions(proposal_id);
+CREATE INDEX IF NOT EXISTS idx_decisions_tenant ON decisions(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_decisions_outcome ON decisions(outcome);
+CREATE INDEX IF NOT EXISTS idx_decisions_created ON decisions(decided_at DESC);
