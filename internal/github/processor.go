@@ -373,6 +373,11 @@ func (p *Processor) handleCheckRunCompleted(ctx context.Context, job *queue.Job)
 	repo := event.Repository
 	prNum := 0
 	_, _ = fmt.Sscanf(matchedProposal.ChangeRef.ExternalID, "%d", &prNum)
+	slog.InfoContext(ctx, "re-evaluating after check_run",
+		"proposal_id", matchedProposal.ProposalID,
+		"pr_number", prNum,
+		"evidence_id", evidenceID,
+	)
 	return p.evaluateProposal(ctx, matchedProposal.ProposalID, installID,
 		repo.Owner.Login, repo.Name, cr.HeadSHA, "", prNum)
 }

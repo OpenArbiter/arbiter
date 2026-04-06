@@ -158,16 +158,21 @@ func (c *Client) CreateCheckRun(ctx context.Context, installationID int64, owner
 		return 0, err
 	}
 
-	checkRun, _, err := client.Checks.CreateCheckRun(ctx, owner, repo, gh.CreateCheckRunOptions{
-		Name:       opts.Name,
-		HeadSHA:    headSHA,
-		Status:     gh.Ptr(opts.Status),
-		Conclusion: gh.Ptr(opts.Conclusion),
+	createOpts := gh.CreateCheckRunOptions{
+		Name:    opts.Name,
+		HeadSHA: headSHA,
+		Status:  gh.Ptr(opts.Status),
 		Output: &gh.CheckRunOutput{
 			Title:   gh.Ptr(opts.Title),
 			Summary: gh.Ptr(opts.Summary),
 		},
-	})
+	}
+	// Only set conclusion when status is completed — GitHub rejects empty conclusion
+	if opts.Conclusion != "" {
+		createOpts.Conclusion = gh.Ptr(opts.Conclusion)
+	}
+
+	checkRun, _, err := client.Checks.CreateCheckRun(ctx, owner, repo, createOpts)
 	if err != nil {
 		return 0, fmt.Errorf("creating check run: %w", err)
 	}
