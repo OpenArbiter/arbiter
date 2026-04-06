@@ -111,18 +111,6 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 	dbURL := requireEnv("ARBITER_DB_URL")
 	redisURL := requireEnv("ARBITER_REDIS_URL")
 	webhookSecret := requireEnv("ARBITER_WEBHOOK_SECRET")
-	appIDStr := requireEnv("ARBITER_GITHUB_APP_ID")
-	privateKeyPath := requireEnv("ARBITER_GITHUB_PRIVATE_KEY_PATH")
-
-	appID, err := strconv.ParseInt(appIDStr, 10, 64)
-	if err != nil {
-		return fmt.Errorf("invalid ARBITER_GITHUB_APP_ID: %w", err)
-	}
-
-	privateKeyPEM, err := os.ReadFile(privateKeyPath)
-	if err != nil {
-		return fmt.Errorf("reading private key: %w", err)
-	}
 
 	listenAddr := os.Getenv("ARBITER_LISTEN_ADDR")
 	if listenAddr == "" {
@@ -149,10 +137,26 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 		return fmt.Errorf("pinging redis: %w", err)
 	}
 
-	// Initialize GitHub client
-	ghClient, err := gh.NewClient(appID, privateKeyPEM)
-	if err != nil {
-		return fmt.Errorf("initializing github client: %w", err)
+	// Initialize GitHub client (optional — needed for webhook processing)
+	var ghClient *gh.Client
+	appIDStr := os.Getenv("ARBITER_GITHUB_APP_ID")
+	privateKeyPath := os.Getenv("ARBITER_GITHUB_PRIVATE_KEY_PATH")
+	if appIDStr != "" && privateKeyPath != "" {
+		appID, err := strconv.ParseInt(appIDStr, 10, 64)
+		if err != nil {
+			return fmt.Errorf("invalid ARBITER_GITHUB_APP_ID: %w", err)
+		}
+		privateKeyPEM, err := os.ReadFile(privateKeyPath)
+		if err != nil {
+			return fmt.Errorf("reading private key: %w", err)
+		}
+		ghClient, err = gh.NewClient(appID, privateKeyPEM)
+		if err != nil {
+			return fmt.Errorf("initializing github client: %w", err)
+		}
+		slog.InfoContext(ctx, "github client initialized", "app_id", appID)
+	} else {
+		slog.WarnContext(ctx, "github client not configured — webhook processing disabled")
 	}
 
 	// Initialize stats
