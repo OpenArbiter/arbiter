@@ -52,13 +52,16 @@ func main() {
 }
 
 func runMigrate(ctx context.Context) error {
-	dbURL := requireEnv("ARBITER_DB_URL")
+	dbURL := os.Getenv("ARBITER_DB_URL")
+	if dbURL == "" {
+		return fmt.Errorf("ARBITER_DB_URL is required for migrate")
+	}
 	migrationsDir := os.Getenv("ARBITER_MIGRATIONS_DIR")
 	if migrationsDir == "" {
 		migrationsDir = "/migrations"
 	}
 
-	slog.Info("running migrations", "dir", migrationsDir, "db", "***")
+	slog.Info("running migrations", "dir", migrationsDir)
 
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
@@ -66,10 +69,19 @@ func runMigrate(ctx context.Context) error {
 	}
 	defer pool.Close()
 
-	// Read and execute migration files in order
+	if err := pool.Ping(ctx); err != nil {
+		return fmt.Errorf("pinging database: %w", err)
+	}
+	slog.Info("database connected")
+
 	entries, err := os.ReadDir(migrationsDir)
 	if err != nil {
-		return fmt.Errorf("reading migrations dir: %w", err)
+		return fmt.Errorf("reading migrations dir %s: %w", migrationsDir, err)
+	}
+
+	if len(entries) == 0 {
+		slog.Warn("no migration files found", "dir", migrationsDir)
+		return nil
 	}
 
 	for _, entry := range entries {
