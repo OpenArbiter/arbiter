@@ -52,6 +52,8 @@ func main() {
 }
 
 func runMigrate(ctx context.Context) error {
+	slog.Info("migrate: starting (only ARBITER_DB_URL required)")
+
 	dbURL := os.Getenv("ARBITER_DB_URL")
 	if dbURL == "" {
 		return fmt.Errorf("ARBITER_DB_URL is required for migrate")
@@ -63,15 +65,28 @@ func runMigrate(ctx context.Context) error {
 
 	slog.Info("running migrations", "dir", migrationsDir)
 
-	pool, err := pgxpool.New(ctx, dbURL)
-	if err != nil {
-		return fmt.Errorf("connecting to database: %w", err)
+	// Retry connecting to Postgres — it may still be starting up
+	var pool *pgxpool.Pool
+	for attempt := 1; attempt <= 30; attempt++ {
+		var err error
+		pool, err = pgxpool.New(ctx, dbURL)
+		if err == nil {
+			if pingErr := pool.Ping(ctx); pingErr == nil {
+				break
+			}
+			pool.Close()
+		}
+		if attempt == 30 {
+			return fmt.Errorf("could not connect to database after 30 attempts: %w", err)
+		}
+		slog.Info("waiting for database...", "attempt", attempt)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+		}
 	}
 	defer pool.Close()
-
-	if err := pool.Ping(ctx); err != nil {
-		return fmt.Errorf("pinging database: %w", err)
-	}
 	slog.Info("database connected")
 
 	entries, err := os.ReadDir(migrationsDir)
