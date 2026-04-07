@@ -515,12 +515,14 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 		conclusion = "action_required"
 	}
 
+	checkRunSummary := buildCheckRunSummary(result, evidence)
+
 	_, err = p.client.CreateCheckRun(ctx, installID, owner, repo, headSHA, &CheckRunOpts{
 		Name:       "openarbiter/trust",
 		Status:     "completed",
 		Conclusion: conclusion,
-		Title:      fmt.Sprintf("Arbiter: %s", decision.Outcome),
-		Summary:    decision.Summary,
+		Title:      fmt.Sprintf("Arbiter: %s (confidence: %.0f%%)", decision.Outcome, result.Confidence*100),
+		Summary:    checkRunSummary,
 	})
 	if err != nil {
 		slog.WarnContext(ctx, "could not update check run", "error", err)
@@ -797,6 +799,59 @@ func (p *Processor) handlePRReview(ctx context.Context, job *queue.Job) error {
 // parseSeverity extracts severity from review body text.
 // Looks for "severity: high" or just keywords like "critical", "minor".
 // Defaults to high for changes_requested reviews.
+func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) string {
+	var sb strings.Builder
+
+	// Decision
+	sb.WriteString(fmt.Sprintf("**%s**\n\n", result.Decision.Summary))
+
+	// Gate results
+	sb.WriteString("### Gates\n\n")
+	sb.WriteString("| Gate | Status | Details |\n")
+	sb.WriteString("|---|---|---|\n")
+	for _, gr := range result.GateResults {
+		icon := "✅"
+		switch gr.Status {
+		case engine.GateFailed:
+			icon = "❌"
+		case engine.GateWarned:
+			icon = "⚠️"
+		case engine.GateSkipped:
+			icon = "⏭️"
+		}
+		details := ""
+		if len(gr.Reasons) > 0 {
+			details = strings.Join(gr.Reasons, "; ")
+		}
+		sb.WriteString(fmt.Sprintf("| %s %s | %s | %s |\n", icon, gr.Gate, gr.Status, details))
+	}
+
+	// Diff analysis flags
+	var flags []string
+	for i := range evidence {
+		if evidence[i].Source == "arbiter-diff-analysis" && evidence[i].Summary != nil {
+			if evidence[i].Result == model.EvidenceWarn || evidence[i].Result == model.EvidenceFail {
+				for _, flag := range strings.Split(*evidence[i].Summary, "; ") {
+					if flag != "" {
+						flags = append(flags, flag)
+					}
+				}
+			}
+		}
+	}
+	if len(flags) > 0 {
+		sb.WriteString("\n### Diff Analysis\n\n")
+		for _, flag := range flags {
+			sb.WriteString(fmt.Sprintf("- ⚠️ %s\n", flag))
+		}
+	}
+
+	// Confidence
+	sb.WriteString(fmt.Sprintf("\n*Confidence: %.0f%%*\n", result.Confidence*100))
+
+	return sb.String()
+}
+
 func parseSeverity(body string) model.Severity {
 	lower := strings.ToLower(body)
 	switch {
