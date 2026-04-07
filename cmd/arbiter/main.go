@@ -36,13 +36,16 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	// Check for subcommands
-	if len(os.Args) > 1 && os.Args[1] == "migrate" {
-		if err := runMigrate(ctx); err != nil {
-			slog.Error("migration failed", "error", err)
-			os.Exit(1)
+	// Check for subcommands — check all args to handle Docker ENTRYPOINT + CMD concatenation
+	// (Nomad may produce: /app/arbiter /app/arbiter migrate)
+	for _, arg := range os.Args[1:] {
+		if arg == "migrate" {
+			if err := runMigrate(ctx); err != nil {
+				slog.Error("migration failed", "error", err)
+				os.Exit(1)
+			}
+			return
 		}
-		return
 	}
 
 	if err := run(ctx, cancel); err != nil && ctx.Err() == nil {
