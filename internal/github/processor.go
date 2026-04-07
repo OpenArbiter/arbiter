@@ -279,11 +279,18 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 			scopeEvidence := GenerateScopeEvidence(scopeResult, proposalID, tenantID)
 			StoreEvidence(ctx, p.store, scopeEvidence)
 
-			slog.InfoContext(ctx, "diff+scope analysis complete",
+			// Coverage analysis — check if code changes have test changes
+			// Uses default patterns here; config-driven patterns applied during evaluation
+			coverageResult := AnalyzeCoverage(fileDetails, config.TestingConfig{})
+			coverageEvidence := GenerateCoverageEvidence(coverageResult, proposalID, tenantID)
+			StoreEvidence(ctx, p.store, coverageEvidence)
+
+			slog.InfoContext(ctx, "diff+scope+coverage analysis complete",
 				"files", insights.TotalFiles,
 				"diff_flags", len(insights.Flags),
 				"scope_flags", len(scopeResult.Flags),
 				"capabilities", len(scopeResult.NewCapabilities),
+				"uncovered_files", len(coverageResult.UncoveredCodeFiles),
 			)
 		}
 	}
@@ -942,6 +949,7 @@ func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) s
 	// Diff analysis flags
 	var diffFlags []string
 	var scopeFlags []string
+	var coverageFlags []string
 	for i := range evidence {
 		if evidence[i].Summary == nil {
 			continue
@@ -963,6 +971,12 @@ func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) s
 					scopeFlags = append(scopeFlags, f)
 				}
 			}
+		case "arbiter-coverage-analysis":
+			for _, f := range parts {
+				if f != "" {
+					coverageFlags = append(coverageFlags, f)
+				}
+			}
 		}
 	}
 	if len(diffFlags) > 0 {
@@ -979,6 +993,13 @@ func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) s
 				icon = "🔴"
 			}
 			sb.WriteString(fmt.Sprintf("- %s %s\n", icon, flag))
+		}
+	}
+
+	if len(coverageFlags) > 0 {
+		sb.WriteString("\n### Test Coverage\n\n")
+		for _, flag := range coverageFlags {
+			sb.WriteString(fmt.Sprintf("- 🧪 %s\n", flag))
 		}
 	}
 

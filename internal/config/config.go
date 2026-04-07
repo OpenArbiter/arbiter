@@ -63,11 +63,24 @@ type ActionsConfig struct {
 	OnNeedsAction []Action `yaml:"on_needs_action"`
 }
 
+// TestMapping maps code file patterns to their expected test file patterns.
+type TestMapping struct {
+	Code string `yaml:"code"` // glob pattern for code files (e.g. "src/**/*.ts")
+	Test string `yaml:"test"` // glob pattern for test files (e.g. "src/**/*.test.ts")
+}
+
+// TestingConfig controls test coverage analysis.
+type TestingConfig struct {
+	Patterns       []TestMapping `yaml:"patterns"`
+	SensitivePaths []string      `yaml:"sensitive_paths"` // paths that require extra scrutiny
+}
+
 // Config represents the parsed .arbiter.yml configuration.
 type Config struct {
 	Gates    GatesConfig    `yaml:"gates"`
 	Evidence EvidenceConfig `yaml:"evidence"`
 	Actions  ActionsConfig  `yaml:"actions"`
+	Testing  TestingConfig  `yaml:"testing"`
 }
 
 // GatesConfig controls behavior of each evaluation gate.
