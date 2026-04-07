@@ -564,6 +564,7 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 			Decision:       decision,
 			Confidence:     result.Confidence,
 			Stats:          p.stats,
+			CheckRunDetail: checkRunSummary,
 		}
 		p.client.ExecuteActions(ctx, actCtx, cfg.Actions)
 	}

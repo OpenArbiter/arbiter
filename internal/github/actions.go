@@ -26,6 +26,7 @@ type ActionContext struct {
 	Decision       model.Decision
 	Confidence     float64
 	Stats          *Stats
+	CheckRunDetail string // full markdown analysis for comments
 }
 
 // ExecuteActions runs all configured actions for the given decision outcome.
@@ -234,6 +235,7 @@ func renderTemplate(tmpl string, actCtx *ActionContext) string {
 	r := strings.NewReplacer(
 		"{{outcome}}", string(actCtx.Decision.Outcome),
 		"{{summary}}", actCtx.Decision.Summary,
+		"{{details}}", actCtx.CheckRunDetail,
 		"{{reason}}", string(actCtx.Decision.ReasonCode),
 		"{{confidence}}", fmt.Sprintf("%.0f%%", actCtx.Confidence*100),
 		"{{pr_number}}", fmt.Sprintf("%d", actCtx.PRNumber),
