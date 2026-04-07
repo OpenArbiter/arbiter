@@ -33,6 +33,7 @@ type Store interface {
 	ListOpenChallengesByProposal(ctx context.Context, proposalID string) ([]model.Challenge, error)
 	ResolveChallenge(ctx context.Context, challengeID string, resolvedBy string, note string) error
 	DismissChallenge(ctx context.Context, challengeID string, resolvedBy string, note string) error
+	UpdateChallengeLinks(ctx context.Context, challengeID string, evidenceIDs []string) error
 
 	// Decisions
 	CreateDecision(ctx context.Context, decision *model.Decision) error

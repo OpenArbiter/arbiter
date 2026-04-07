@@ -479,6 +479,20 @@ func (s *PgStore) updateChallengeStatus(ctx context.Context, challengeID string,
 	return nil
 }
 
+func (s *PgStore) UpdateChallengeLinks(ctx context.Context, challengeID string, evidenceIDs []string) error {
+	linkedIDs, _ := json.Marshal(evidenceIDs)
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE challenges SET linked_evidence_ids = $1 WHERE challenge_id = $2`,
+		linkedIDs, challengeID)
+	if err != nil {
+		return fmt.Errorf("updating challenge links: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // --- Decisions ---
 
 func (s *PgStore) CreateDecision(ctx context.Context, d *model.Decision) error {

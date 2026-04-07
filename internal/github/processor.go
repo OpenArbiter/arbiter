@@ -497,6 +497,9 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 		return fmt.Errorf("listing challenges: %w", err)
 	}
 
+	// Auto-link challenges to relevant evidence
+	AutoLinkChallenges(ctx, p.store, proposalID)
+
 	// Load config from the base branch (fall back to default branch)
 	cfg := config.DefaultConfig()
 	configRef := baseRef
