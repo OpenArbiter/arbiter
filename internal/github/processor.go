@@ -94,6 +94,8 @@ func (p *Processor) processJob(ctx context.Context, job *queue.Job) error {
 		return p.handleCheckSuiteCompleted(ctx, job)
 	case queue.JobPRReviewSubmitted:
 		return p.handlePRReview(ctx, job)
+	case queue.JobStatusEvent:
+		return p.handleStatusEvent(ctx, job)
 	default:
 		slog.WarnContext(ctx, "unknown job type", "job_type", job.Type)
 		return nil
@@ -643,6 +645,108 @@ func (p *Processor) handleCheckSuiteCompleted(ctx context.Context, job *queue.Jo
 	}
 
 	return nil
+}
+
+// StatusEvent is the relevant subset of a GitHub status webhook payload.
+type StatusEvent struct {
+	SHA     string `json:"sha"`
+	State   string `json:"state"` // pending, success, failure, error
+	Context string `json:"context"`
+	Repository struct {
+		FullName string `json:"full_name"`
+		Owner    struct {
+			Login string `json:"login"`
+		} `json:"owner"`
+		Name string `json:"name"`
+	} `json:"repository"`
+	Installation struct {
+		ID int64 `json:"id"`
+	} `json:"installation"`
+}
+
+func (p *Processor) handleStatusEvent(ctx context.Context, job *queue.Job) error {
+	var event StatusEvent
+	if err := json.Unmarshal(job.Payload, &event); err != nil {
+		return permanent("parsing status event: %w", err)
+	}
+
+	// Ignore pending statuses
+	if event.State == "pending" {
+		return nil
+	}
+
+	installID := event.Installation.ID
+	tenantID := fmt.Sprintf("github:%d", installID)
+
+	slog.InfoContext(ctx, "processing status",
+		"context", event.Context,
+		"state", event.State,
+		"sha", event.SHA,
+	)
+
+	// Find matching proposal
+	proposals, err := p.store.ListOpenProposalsByTenant(ctx, tenantID, 100, 0)
+	if err != nil {
+		return fmt.Errorf("listing proposals: %w", err)
+	}
+
+	var matchedProposal *model.Proposal
+	for i := range proposals {
+		expectedSuffix := ":sha:" + event.SHA
+		if len(proposals[i].ProposalID) > len(expectedSuffix) &&
+			proposals[i].ProposalID[len(proposals[i].ProposalID)-len(expectedSuffix):] == expectedSuffix {
+			matchedProposal = &proposals[i]
+			break
+		}
+	}
+
+	if matchedProposal == nil {
+		slog.InfoContext(ctx, "no matching proposal for status", "sha", event.SHA)
+		return nil
+	}
+
+	// Map status to evidence
+	var result model.EvidenceResult
+	switch event.State {
+	case "success":
+		result = model.EvidencePass
+	case "failure", "error":
+		result = model.EvidenceFail
+	default:
+		result = model.EvidenceInfo
+	}
+
+	evidenceType := mapCheckRunToEvidenceType(event.Context)
+	evidenceID := fmt.Sprintf("gh:status:%s:%s:%s", event.Repository.FullName, event.Context, event.SHA)
+
+	// Idempotency
+	if _, err := p.store.GetEvidence(ctx, evidenceID); err == nil {
+		return nil
+	}
+
+	summary := fmt.Sprintf("%s: %s", event.Context, event.State)
+	evidence := model.Evidence{
+		EvidenceID:   evidenceID,
+		ProposalID:   matchedProposal.ProposalID,
+		TenantID:     tenantID,
+		EvidenceType: evidenceType,
+		Subject:      event.Context,
+		Result:       result,
+		Confidence:   model.ConfidenceHigh,
+		Source:       "github-status",
+		CreatedAt:    time.Now().UTC(),
+		Summary:      &summary,
+	}
+	if err := p.store.CreateEvidence(ctx, &evidence); err != nil {
+		return fmt.Errorf("creating evidence from status: %w", err)
+	}
+
+	// Re-evaluate
+	repo := event.Repository
+	prNum := 0
+	_, _ = fmt.Sscanf(matchedProposal.ChangeRef.ExternalID, "%d", &prNum)
+	return p.evaluateProposal(ctx, matchedProposal.ProposalID, installID,
+		repo.Owner.Login, repo.Name, event.SHA, "", prNum)
 }
 
 // PRReviewEvent is the relevant subset of a GitHub pull_request_review webhook payload.

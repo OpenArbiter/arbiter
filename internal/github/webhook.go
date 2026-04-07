@@ -181,6 +181,9 @@ func mapEventToJobType(eventType string, body []byte) (queue.JobType, error) {
 			return queue.JobPRReviewSubmitted, nil
 		}
 		return "", fmt.Errorf("unhandled pull_request_review action: %s", review.Action)
+
+	case "status":
+		return queue.JobStatusEvent, nil
 	}
 
 	return "", fmt.Errorf("unhandled event type: %s", eventType)
