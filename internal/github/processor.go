@@ -260,6 +260,24 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 		}
 	}
 
+	// Analyze the diff and generate evidence
+	if p.client != nil {
+		fileDetails, err := p.client.GetPRFileDetails(ctx, installID, repo.Owner.Login, repo.Name, pr.Number)
+		if err != nil {
+			slog.WarnContext(ctx, "could not fetch PR file details", "error", err)
+		} else {
+			insights := AnalyzeDiff(fileDetails)
+			diffEvidence := GenerateEvidence(insights, proposalID, tenantID)
+			StoreEvidence(ctx, p.store, diffEvidence)
+			slog.InfoContext(ctx, "diff analysis complete",
+				"files", insights.TotalFiles,
+				"flags", len(insights.Flags),
+				"additions", insights.TotalAdditions,
+				"deletions", insights.TotalDeletions,
+			)
+		}
+	}
+
 	// Create initial check run (in_progress)
 	_, err = p.client.CreateCheckRun(ctx, installID, repo.Owner.Login, repo.Name, pr.Head.SHA, &CheckRunOpts{
 		Name:       "openarbiter/trust",
