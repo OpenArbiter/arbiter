@@ -280,12 +280,28 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 			StoreEvidence(ctx, p.store, scopeEvidence)
 
 			// Coverage analysis — check if code changes have test changes
-			// Uses default patterns here; config-driven patterns applied during evaluation
 			coverageResult := AnalyzeCoverage(fileDetails, config.TestingConfig{})
 			coverageEvidence := GenerateCoverageEvidence(coverageResult, proposalID, tenantID)
 			StoreEvidence(ctx, p.store, coverageEvidence)
 
-			slog.InfoContext(ctx, "diff+scope+coverage analysis complete",
+			// Invariant checks — configurable rules from .arbiter.yml
+			// Load config early for invariants (best effort)
+			var invariants []config.Invariant
+			if p.client != nil {
+				configData, cfgErr := p.client.GetFileContent(ctx, installID, repo.Owner.Login, repo.Name, ".arbiter.yml", pr.Base.Ref)
+				if cfgErr == nil && configData != nil {
+					if parsed, parseErr := config.Parse(configData); parseErr == nil {
+						invariants = parsed.Invariants
+					}
+				}
+			}
+			if len(invariants) > 0 {
+				invariantResults := CheckInvariants(invariants, fileDetails, addedLines)
+				invariantEvidence := GenerateInvariantEvidence(invariantResults, proposalID, tenantID)
+				StoreEvidence(ctx, p.store, invariantEvidence)
+			}
+
+			slog.InfoContext(ctx, "diff+scope+coverage+invariant analysis complete",
 				"files", insights.TotalFiles,
 				"diff_flags", len(insights.Flags),
 				"scope_flags", len(scopeResult.Flags),
@@ -950,6 +966,7 @@ func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) s
 	var diffFlags []string
 	var scopeFlags []string
 	var coverageFlags []string
+	var invariantFlags []string
 	for i := range evidence {
 		if evidence[i].Summary == nil {
 			continue
@@ -977,6 +994,12 @@ func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) s
 					coverageFlags = append(coverageFlags, f)
 				}
 			}
+		case "arbiter-invariant-checks":
+			for _, f := range parts {
+				if f != "" {
+					invariantFlags = append(invariantFlags, f)
+				}
+			}
 		}
 	}
 	if len(diffFlags) > 0 {
@@ -1000,6 +1023,12 @@ func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) s
 		sb.WriteString("\n### Test Coverage\n\n")
 		for _, flag := range coverageFlags {
 			sb.WriteString(fmt.Sprintf("- 🧪 %s\n", flag))
+		}
+	}
+	if len(invariantFlags) > 0 {
+		sb.WriteString("\n### Invariant Checks\n\n")
+		for _, flag := range invariantFlags {
+			sb.WriteString(fmt.Sprintf("- 📏 %s\n", flag))
 		}
 	}
 

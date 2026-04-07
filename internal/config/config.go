@@ -75,12 +75,24 @@ type TestingConfig struct {
 	SensitivePaths []string      `yaml:"sensitive_paths"` // paths that require extra scrutiny
 }
 
+// Invariant is a configurable rule that always applies to PRs.
+type Invariant struct {
+	Name     string `yaml:"name"`
+	Rule     string `yaml:"rule"`     // max_lines_changed, max_files_changed, no_new_files_in, require_together, require_file, forbidden_pattern
+	Value    int    `yaml:"value,omitempty"`
+	Path     string `yaml:"path,omitempty"`
+	Files    []string `yaml:"files,omitempty"`
+	Pattern  string `yaml:"pattern,omitempty"`
+	Severity string `yaml:"severity"` // low, medium, high
+}
+
 // Config represents the parsed .arbiter.yml configuration.
 type Config struct {
-	Gates    GatesConfig    `yaml:"gates"`
-	Evidence EvidenceConfig `yaml:"evidence"`
-	Actions  ActionsConfig  `yaml:"actions"`
-	Testing  TestingConfig  `yaml:"testing"`
+	Gates      GatesConfig    `yaml:"gates"`
+	Evidence   EvidenceConfig `yaml:"evidence"`
+	Actions    ActionsConfig  `yaml:"actions"`
+	Testing    TestingConfig  `yaml:"testing"`
+	Invariants []Invariant    `yaml:"invariants"`
 }
 
 // GatesConfig controls behavior of each evaluation gate.
