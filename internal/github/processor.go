@@ -266,14 +266,22 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 		if err != nil {
 			slog.WarnContext(ctx, "could not fetch PR file details", "error", err)
 		} else {
+			// Diff analysis — file-level patterns
 			insights := AnalyzeDiff(fileDetails)
 			diffEvidence := GenerateEvidence(insights, proposalID, tenantID)
 			StoreEvidence(ctx, p.store, diffEvidence)
-			slog.InfoContext(ctx, "diff analysis complete",
+
+			// Scope analysis — capability detection from diff content
+			addedLines := ExtractAddedLines(fileDetails)
+			scopeResult := AnalyzeScope(pr.Title, pr.Body, fileDetails, addedLines)
+			scopeEvidence := GenerateScopeEvidence(scopeResult, proposalID, tenantID)
+			StoreEvidence(ctx, p.store, scopeEvidence)
+
+			slog.InfoContext(ctx, "diff+scope analysis complete",
 				"files", insights.TotalFiles,
-				"flags", len(insights.Flags),
-				"additions", insights.TotalAdditions,
-				"deletions", insights.TotalDeletions,
+				"diff_flags", len(insights.Flags),
+				"scope_flags", len(scopeResult.Flags),
+				"capabilities", len(scopeResult.NewCapabilities),
 			)
 		}
 	}
@@ -827,22 +835,45 @@ func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) s
 	}
 
 	// Diff analysis flags
-	var flags []string
+	var diffFlags []string
+	var scopeFlags []string
 	for i := range evidence {
-		if evidence[i].Source == "arbiter-diff-analysis" && evidence[i].Summary != nil {
-			if evidence[i].Result == model.EvidenceWarn || evidence[i].Result == model.EvidenceFail {
-				for _, flag := range strings.Split(*evidence[i].Summary, "; ") {
-					if flag != "" {
-						flags = append(flags, flag)
-					}
+		if evidence[i].Summary == nil {
+			continue
+		}
+		if evidence[i].Result != model.EvidenceWarn && evidence[i].Result != model.EvidenceFail {
+			continue
+		}
+		parts := strings.Split(*evidence[i].Summary, "; ")
+		switch evidence[i].Source {
+		case "arbiter-diff-analysis":
+			for _, f := range parts {
+				if f != "" {
+					diffFlags = append(diffFlags, f)
+				}
+			}
+		case "arbiter-scope-analysis":
+			for _, f := range parts {
+				if f != "" {
+					scopeFlags = append(scopeFlags, f)
 				}
 			}
 		}
 	}
-	if len(flags) > 0 {
+	if len(diffFlags) > 0 {
 		sb.WriteString("\n### Diff Analysis\n\n")
-		for _, flag := range flags {
+		for _, flag := range diffFlags {
 			sb.WriteString(fmt.Sprintf("- ⚠️ %s\n", flag))
+		}
+	}
+	if len(scopeFlags) > 0 {
+		sb.WriteString("\n### Scope & Capability Analysis\n\n")
+		for _, flag := range scopeFlags {
+			icon := "⚠️"
+			if strings.Contains(flag, "process_execution") || strings.Contains(flag, "eval_dynamic") {
+				icon = "🔴"
+			}
+			sb.WriteString(fmt.Sprintf("- %s %s\n", icon, flag))
 		}
 	}
 

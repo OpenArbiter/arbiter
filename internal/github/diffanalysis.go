@@ -20,6 +20,7 @@ type PRFileInfo struct {
 	Additions int
 	Deletions int
 	Changes   int
+	Patch     string // the actual diff content
 }
 
 // GetPRFileDetails returns detailed file info for a pull request.
@@ -44,6 +45,7 @@ func (c *Client) GetPRFileDetails(ctx context.Context, installationID int64, own
 				Additions: f.GetAdditions(),
 				Deletions: f.GetDeletions(),
 				Changes:   f.GetChanges(),
+				Patch:     f.GetPatch(),
 			})
 		}
 		if resp.NextPage == 0 {
@@ -203,6 +205,26 @@ func GenerateEvidence(insights DiffInsights, proposalID, tenantID string) []mode
 	}
 
 	return evidence
+}
+
+// ExtractAddedLines parses the patch content and returns only added lines per file.
+func ExtractAddedLines(files []PRFileInfo) map[string][]string {
+	result := make(map[string][]string)
+	for i := range files {
+		if files[i].Patch == "" {
+			continue
+		}
+		var added []string
+		for _, line := range strings.Split(files[i].Patch, "\n") {
+			if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
+				added = append(added, line[1:]) // strip the + prefix
+			}
+		}
+		if len(added) > 0 {
+			result[files[i].Filename] = added
+		}
+	}
+	return result
 }
 
 // File classification helpers
