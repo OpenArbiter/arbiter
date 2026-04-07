@@ -3,6 +3,7 @@ package github
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/openarbiter/arbiter/internal/model"
 )
@@ -208,6 +209,7 @@ func GenerateScopeEvidence(analysis ScopeAnalysis, proposalID, tenantID string) 
 		Result:       result,
 		Confidence:   model.ConfidenceMedium,
 		Source:       "arbiter-scope-analysis",
+		CreatedAt:    time.Now().UTC(),
 		Summary:      &summary,
 	}}
 }
