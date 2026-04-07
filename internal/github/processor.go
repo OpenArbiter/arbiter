@@ -473,6 +473,9 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 	}
 	result := engine.Evaluate(&evalCtx)
 
+	// Check previous decision to determine if outcome changed
+	previousDecision, _ := p.store.GetLatestDecisionByProposal(ctx, proposalID)
+
 	// Store the decision
 	decision := result.Decision
 	decision.DecisionID = fmt.Sprintf("dec:%s:%d", proposalID, time.Now().UnixMilli())
@@ -518,8 +521,9 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 		"confidence", result.Confidence,
 	)
 
-	// Execute configured actions
-	if prNumber > 0 {
+	// Execute configured actions — only when decision outcome changes
+	decisionChanged := previousDecision == nil || previousDecision.Outcome != decision.Outcome
+	if prNumber > 0 && decisionChanged {
 		actCtx := &ActionContext{
 			InstallationID: installID,
 			Owner:          owner,
