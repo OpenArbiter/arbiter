@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/openarbiter/arbiter/internal/config"
@@ -91,6 +92,8 @@ func (p *Processor) processJob(ctx context.Context, job *queue.Job) error {
 		return p.handleCheckRunCompleted(ctx, job)
 	case queue.JobCheckSuiteCompleted:
 		return p.handleCheckSuiteCompleted(ctx, job)
+	case queue.JobPRReviewSubmitted:
+		return p.handlePRReview(ctx, job)
 	default:
 		slog.WarnContext(ctx, "unknown job type", "job_type", job.Type)
 		return nil
@@ -611,6 +614,181 @@ func (p *Processor) handleCheckSuiteCompleted(ctx context.Context, job *queue.Jo
 	}
 
 	return nil
+}
+
+// PRReviewEvent is the relevant subset of a GitHub pull_request_review webhook payload.
+type PRReviewEvent struct {
+	Action string `json:"action"`
+	Review struct {
+		ID   int64  `json:"id"`
+		State string `json:"state"` // "approved", "changes_requested", "commented"
+		Body  string `json:"body"`
+		User  struct {
+			Login string `json:"login"`
+		} `json:"user"`
+	} `json:"review"`
+	PullRequest struct {
+		Number int    `json:"number"`
+		Head   struct {
+			SHA string `json:"sha"`
+		} `json:"head"`
+	} `json:"pull_request"`
+	Repository struct {
+		FullName string `json:"full_name"`
+		Owner    struct {
+			Login string `json:"login"`
+		} `json:"owner"`
+		Name string `json:"name"`
+	} `json:"repository"`
+	Installation struct {
+		ID int64 `json:"id"`
+	} `json:"installation"`
+}
+
+func (p *Processor) handlePRReview(ctx context.Context, job *queue.Job) error {
+	var event PRReviewEvent
+	if err := json.Unmarshal(job.Payload, &event); err != nil {
+		return permanent("parsing pull_request_review event: %w", err)
+	}
+
+	review := event.Review
+	pr := event.PullRequest
+	repo := event.Repository
+	installID := event.Installation.ID
+	tenantID := fmt.Sprintf("github:%d", installID)
+
+	slog.InfoContext(ctx, "processing review",
+		"reviewer", review.User.Login,
+		"state", review.State,
+		"pr", pr.Number,
+	)
+
+	// Find the proposal for this PR and SHA
+	proposalID := fmt.Sprintf("gh:%s:pr:%d:sha:%s", repo.FullName, pr.Number, pr.Head.SHA)
+	_, err := p.store.GetProposal(ctx, proposalID)
+	if err != nil {
+		if err == store.ErrNotFound {
+			slog.InfoContext(ctx, "no proposal for review", "proposal_id", proposalID)
+			return nil
+		}
+		return fmt.Errorf("getting proposal: %w", err)
+	}
+
+	switch review.State {
+	case "changes_requested":
+		// Parse severity from review body — look for "severity: high|medium|low"
+		severity := parseSeverity(review.Body)
+
+		// Determine challenge type from review body
+		challengeType := model.ChallengeHiddenBehaviorChange // default
+		for _, ct := range []struct {
+			keyword string
+			ctype   model.ChallengeType
+		}{
+			{"scope", model.ChallengeScopeMismatch},
+			{"test", model.ChallengeInsufficientTestCoverage},
+			{"policy", model.ChallengePolicyViolation},
+			{"regression", model.ChallengeLikelyRegression},
+		} {
+			if containsAny(strings.ToLower(review.Body), ct.keyword) {
+				challengeType = ct.ctype
+				break
+			}
+		}
+
+		summary := review.Body
+		if summary == "" {
+			summary = "Changes requested by reviewer"
+		}
+
+		challengeID := fmt.Sprintf("ch:review:%s:%d:%d", repo.FullName, pr.Number, review.ID)
+
+		// Idempotency — don't duplicate if we already processed this review
+		if _, err := p.store.GetChallenge(ctx, challengeID); err == nil {
+			slog.InfoContext(ctx, "challenge already exists for review", "challenge_id", challengeID)
+			return nil
+		}
+
+		challenge := model.Challenge{
+			ChallengeID:   challengeID,
+			ProposalID:    proposalID,
+			TenantID:      tenantID,
+			RaisedBy:      review.User.Login,
+			ChallengeType: challengeType,
+			Target:        fmt.Sprintf("PR #%d", pr.Number),
+			Severity:      severity,
+			Summary:       summary,
+			Status:        model.ChallengeOpen,
+			CreatedAt:     time.Now().UTC(),
+		}
+
+		if err := p.store.CreateChallenge(ctx, &challenge); err != nil {
+			return fmt.Errorf("creating challenge from review: %w", err)
+		}
+
+		slog.InfoContext(ctx, "challenge created from review",
+			"challenge_id", challengeID,
+			"reviewer", review.User.Login,
+			"severity", severity,
+		)
+
+		// Re-evaluate with the new challenge
+		return p.evaluateProposal(ctx, proposalID, installID,
+			repo.Owner.Login, repo.Name, pr.Head.SHA, "", pr.Number)
+
+	case "approved":
+		// Resolve all open challenges raised by this reviewer on this proposal
+		challenges, err := p.store.ListOpenChallengesByProposal(ctx, proposalID)
+		if err != nil {
+			return fmt.Errorf("listing challenges: %w", err)
+		}
+
+		resolved := 0
+		for i := range challenges {
+			if challenges[i].RaisedBy == review.User.Login {
+				note := "Reviewer approved the PR"
+				if review.Body != "" {
+					note = review.Body
+				}
+				if err := p.store.ResolveChallenge(ctx, challenges[i].ChallengeID, review.User.Login, note); err != nil {
+					slog.WarnContext(ctx, "could not resolve challenge", "challenge_id", challenges[i].ChallengeID, "error", err)
+				} else {
+					resolved++
+				}
+			}
+		}
+
+		if resolved > 0 {
+			slog.InfoContext(ctx, "challenges resolved by approval",
+				"reviewer", review.User.Login,
+				"resolved", resolved,
+			)
+			// Re-evaluate now that challenges are resolved
+			return p.evaluateProposal(ctx, proposalID, installID,
+				repo.Owner.Login, repo.Name, pr.Head.SHA, "", pr.Number)
+		}
+
+	case "commented":
+		// Regular comments don't create challenges
+		return nil
+	}
+
+	return nil
+}
+
+// parseSeverity extracts severity from review body text.
+// Looks for "severity: high" or just keywords like "critical", "minor".
+// Defaults to high for changes_requested reviews.
+func parseSeverity(body string) model.Severity {
+	lower := strings.ToLower(body)
+	switch {
+	case containsAny(lower, "severity: low", "minor", "nit", "nitpick"):
+		return model.SeverityLow
+	case containsAny(lower, "severity: medium", "moderate"):
+		return model.SeverityMedium
+	default:
+		return model.SeverityHigh // changes_requested is a strong signal
+	}
 }
 
 // mapCheckRunToEvidenceType maps a GitHub check run name to an evidence type.

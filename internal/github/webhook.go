@@ -169,6 +169,18 @@ func mapEventToJobType(eventType string, body []byte) (queue.JobType, error) {
 			return queue.JobCheckSuiteCompleted, nil
 		}
 		return "", fmt.Errorf("unhandled check_suite action: %s", cs.Action)
+
+	case "pull_request_review":
+		var review struct {
+			Action string `json:"action"`
+		}
+		if err := json.Unmarshal(body, &review); err != nil {
+			return "", fmt.Errorf("parsing pull_request_review payload: %w", err)
+		}
+		if review.Action == "submitted" {
+			return queue.JobPRReviewSubmitted, nil
+		}
+		return "", fmt.Errorf("unhandled pull_request_review action: %s", review.Action)
 	}
 
 	return "", fmt.Errorf("unhandled event type: %s", eventType)

@@ -25,6 +25,7 @@ const (
 	JobPRClosed            JobType = "pr_closed"
 	JobCheckRunCompleted   JobType = "check_run_completed"
 	JobCheckSuiteCompleted JobType = "check_suite_completed"
+	JobPRReviewSubmitted   JobType = "pr_review_submitted"
 )
 
 // Job represents a unit of work to be processed asynchronously.
