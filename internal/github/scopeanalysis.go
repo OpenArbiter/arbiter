@@ -54,6 +54,7 @@ var capabilityPatterns = []struct {
 			"shell_exec(", "passthru(", "proc_open(",
 			"Process.Start", "ProcessStartInfo",
 			"popen(", "execvp(", "execve(",
+			"Process()", "process.run(", "NSTask",
 		},
 	},
 	{
@@ -67,6 +68,7 @@ var capabilityPatterns = []struct {
 			"curl_init(", "curl_exec(", "file_get_contents(\"http",
 			"HttpClient", "HttpURLConnection", "socket(",
 			"WebClient", "HttpWebRequest",
+			"URL(string:", "URLSession", ".readText()",
 		},
 	},
 	{
@@ -79,6 +81,8 @@ var capabilityPatterns = []struct {
 			"file_put_contents(", "fwrite(", "chmod(",
 			"FileOutputStream", "File.WriteAll", "File.Create",
 			"fopen(", "fprintf(",
+			"FileManager.default", ".writeBytes(", ".createFile(",
+			"setExecutable(",
 		},
 	},
 	{
@@ -102,6 +106,7 @@ var capabilityPatterns = []struct {
 			"BinaryFormatter", "ObjectInputStream",
 			"dlopen(", "dlsym(",
 			"Class.forName(",
+			"NSClassFromString(", "ScriptEngineManager",
 		},
 	},
 	{
