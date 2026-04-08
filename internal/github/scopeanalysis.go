@@ -49,6 +49,7 @@ var capabilityPatterns = []struct {
 			"os/exec", "os.exec", "subprocess", "child_process",
 			"exec.Command", "exec.Run", "os.system(", "system(",
 			"popen(", "Runtime.exec", "ProcessBuilder",
+			"syscall.Exec", "syscall.ForkExec", "\"syscall\"",
 		},
 	},
 	{
@@ -99,6 +100,15 @@ var capabilityPatterns = []struct {
 		patterns: []string{
 			"//nolint", "# noqa", "eslint-disable", "// nosec",
 			"@SuppressWarnings", "rubocop:disable",
+		},
+	},
+	{
+		name:        "build_time_execution",
+		description: "Executes commands at build time",
+		patterns: []string{
+			"//go:generate", "go:generate",
+			"pre-commit", "post-commit", "pre-push",
+			"Makefile:", "$(shell",
 		},
 	},
 }
