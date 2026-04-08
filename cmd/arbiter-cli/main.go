@@ -46,7 +46,7 @@ func main() {
 			os.Exit(1)
 		}
 		token := requireEnv("GITHUB_TOKEN")
-		body := fmt.Sprintf(`{"proposal_id":"%s","challenge_type":"hidden_behavior_change","target":"PR","severity":"%s","summary":"%s"}`,
+		body := fmt.Sprintf(`{"proposal_id":%q,"challenge_type":"hidden_behavior_change","target":"PR","severity":%q,"summary":%q}`,
 			os.Args[2], os.Args[3], strings.Join(os.Args[4:], " "))
 		postAuth(baseURL+"/api/challenge", body, token)
 	case "resolve":
@@ -59,7 +59,7 @@ func main() {
 		if len(os.Args) > 3 {
 			note = strings.Join(os.Args[3:], " ")
 		}
-		body := fmt.Sprintf(`{"challenge_id":"%s","note":"%s","action":"resolve"}`, os.Args[2], note)
+		body := fmt.Sprintf(`{"challenge_id":%q,"note":%q,"action":"resolve"}`, os.Args[2], note)
 		postAuth(baseURL+"/api/challenge/resolve", body, token)
 	default:
 		printUsage()

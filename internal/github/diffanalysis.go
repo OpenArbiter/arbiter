@@ -296,7 +296,7 @@ type Annotation struct {
 }
 
 // GenerateAnnotations creates inline annotations from scope and invariant analysis.
-func GenerateAnnotations(files []PRFileInfo, scopeAnalysis ScopeAnalysis, invariantResults []InvariantResult) []Annotation {
+func GenerateAnnotations(files []PRFileInfo, scopeAnalysis *ScopeAnalysis, invariantResults []InvariantResult) []Annotation {
 	var annotations []Annotation
 
 	addedWithLines := ExtractAddedLinesWithNumbers(files)

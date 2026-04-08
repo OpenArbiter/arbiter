@@ -168,7 +168,7 @@ func AnalyzeScope(title, body string, files []PRFileInfo, addedLines map[string]
 }
 
 // GenerateScopeEvidence creates Evidence records from scope analysis.
-func GenerateScopeEvidence(analysis ScopeAnalysis, proposalID, tenantID string) []model.Evidence {
+func GenerateScopeEvidence(analysis *ScopeAnalysis, proposalID, tenantID string) []model.Evidence {
 	if len(analysis.Flags) == 0 {
 		return nil
 	}

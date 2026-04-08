@@ -71,7 +71,7 @@ var suspiciousPaths = []string{
 }
 
 // RunDeepAnalysis performs target, entropy, and combination analysis on added lines.
-func RunDeepAnalysis(files []PRFileInfo, cfg config.AnalysisConfig) DeepAnalysisResult {
+func RunDeepAnalysis(files []PRFileInfo, cfg *config.AnalysisConfig) DeepAnalysisResult {
 	var result DeepAnalysisResult
 	addedWithLines := ExtractAddedLinesWithNumbers(files)
 
@@ -274,7 +274,7 @@ func shannonEntropy(s string) float64 {
 }
 
 // GenerateDeepAnalysisEvidence creates Evidence from deep analysis results.
-func GenerateDeepAnalysisEvidence(result DeepAnalysisResult, cfg config.AnalysisConfig, proposalID, tenantID string) []model.Evidence {
+func GenerateDeepAnalysisEvidence(result DeepAnalysisResult, cfg *config.AnalysisConfig, proposalID, tenantID string) []model.Evidence {
 	var flags []string
 	worstResult := model.EvidencePass
 

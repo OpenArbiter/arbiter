@@ -91,7 +91,7 @@ func (a *API) HandleCreateChallenge(w http.ResponseWriter, r *http.Request) {
 
 	if err := a.store.CreateChallenge(r.Context(), &challenge); err != nil {
 		slog.Error("creating challenge", "error", err)
-		http.Error(w, fmt.Sprintf(`{"error":"%s"}`, err.Error()), http.StatusBadRequest)
+		http.Error(w, `{"error":"invalid challenge"}`, http.StatusBadRequest)
 		return
 	}
 

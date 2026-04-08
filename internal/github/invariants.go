@@ -172,11 +172,12 @@ func GenerateInvariantEvidence(results []InvariantResult, proposalID, tenantID s
 			continue
 		}
 		flags = append(flags, fmt.Sprintf("[%s] %s", results[i].Name, results[i].Message))
-		if results[i].Severity == "high" {
+		switch {
+		case results[i].Severity == "high":
 			worstResult = model.EvidenceFail
-		} else if results[i].Severity == "medium" && worstResult != model.EvidenceFail {
+		case results[i].Severity == "medium" && worstResult != model.EvidenceFail:
 			worstResult = model.EvidenceWarn
-		} else if worstResult == model.EvidencePass {
+		case worstResult == model.EvidencePass:
 			worstResult = model.EvidenceWarn
 		}
 	}

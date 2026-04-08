@@ -198,10 +198,7 @@ func matchGlob(pattern, name string) (bool, error) {
 		prefix := parts[0]
 		suffix := ""
 		if len(parts) > 1 {
-			suffix = parts[1]
-			if strings.HasPrefix(suffix, "/") {
-				suffix = suffix[1:]
-			}
+			suffix = strings.TrimPrefix(parts[1], "/")
 		}
 
 		// Check if the name has the right prefix
@@ -223,7 +220,7 @@ func matchGlob(pattern, name string) (bool, error) {
 }
 
 // GenerateCoverageEvidence creates Evidence from coverage analysis.
-func GenerateCoverageEvidence(analysis CoverageAnalysis, proposalID, tenantID string) []model.Evidence {
+func GenerateCoverageEvidence(analysis *CoverageAnalysis, proposalID, tenantID string) []model.Evidence {
 	if len(analysis.Flags) == 0 {
 		return nil
 	}

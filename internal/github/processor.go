@@ -278,12 +278,12 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 			// Scope analysis — capability detection from diff content
 			addedLines := ExtractAddedLines(fileDetails)
 			scopeResult := AnalyzeScope(pr.Title, pr.Body, fileDetails, addedLines)
-			scopeEvidence := GenerateScopeEvidence(scopeResult, proposalID, tenantID)
+			scopeEvidence := GenerateScopeEvidence(&scopeResult, proposalID, tenantID)
 			StoreEvidence(ctx, p.store, scopeEvidence)
 
 			// Coverage analysis — check if code changes have test changes
 			coverageResult := AnalyzeCoverage(fileDetails, config.TestingConfig{})
-			coverageEvidence := GenerateCoverageEvidence(coverageResult, proposalID, tenantID)
+			coverageEvidence := GenerateCoverageEvidence(&coverageResult, proposalID, tenantID)
 			StoreEvidence(ctx, p.store, coverageEvidence)
 
 			// Load config early for invariants and auto-review (best effort)
@@ -315,8 +315,8 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 					}
 				}
 			}
-			deepResult := RunDeepAnalysis(fileDetails, analysisCfg)
-			deepEvidence := GenerateDeepAnalysisEvidence(deepResult, analysisCfg, proposalID, tenantID)
+			deepResult := RunDeepAnalysis(fileDetails, &analysisCfg)
+			deepEvidence := GenerateDeepAnalysisEvidence(deepResult, &analysisCfg, proposalID, tenantID)
 			StoreEvidence(ctx, p.store, deepEvidence)
 
 			// Dependency analysis
@@ -335,7 +335,7 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 
 			// Auto-review — generate challenges from analysis results
 			AutoReview(ctx, p.store, proposalID, tenantID,
-				insights, scopeResult, coverageResult, invariantResults, arCfg)
+				insights, &scopeResult, &coverageResult, invariantResults, &arCfg)
 
 			slog.InfoContext(ctx, "full analysis complete",
 				"files", insights.TotalFiles,
@@ -613,7 +613,7 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 		conclusion = "action_required"
 	}
 
-	checkRunSummary := buildCheckRunSummary(result, evidence)
+	checkRunSummary := buildCheckRunSummary(&result, evidence)
 
 	// Generate inline annotations from evidence
 	var annotations []Annotation
@@ -628,7 +628,7 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 				invResults = CheckInvariants(cfg.Invariants, fileDetails, addedLines)
 			}
 
-			annotations = GenerateAnnotations(fileDetails, scopeResult, invResults)
+			annotations = GenerateAnnotations(fileDetails, &scopeResult, invResults)
 		}
 	}
 
@@ -1147,7 +1147,7 @@ func (p *Processor) handlePRReview(ctx context.Context, job *queue.Job) error {
 // parseSeverity extracts severity from review body text.
 // Looks for "severity: high" or just keywords like "critical", "minor".
 // Defaults to high for changes_requested reviews.
-func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) string {
+func buildCheckRunSummary(result *engine.EvalResult, evidence []model.Evidence) string {
 	var sb strings.Builder
 
 	// Collect all issues by priority
@@ -1297,9 +1297,10 @@ func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) s
 	// Build the output
 	totalIssues := len(critical) + len(warnings)
 
-	if result.Decision.Outcome == model.DecisionAccepted && totalIssues == 0 {
+	switch {
+	case result.Decision.Outcome == model.DecisionAccepted && totalIssues == 0:
 		sb.WriteString("✅ **All checks passed.** This PR is ready to merge.\n")
-	} else if result.Decision.Outcome == model.DecisionAccepted && totalIssues > 0 {
+	case result.Decision.Outcome == model.DecisionAccepted && totalIssues > 0:
 		sb.WriteString(fmt.Sprintf("✅ **Approved** with %d note(s):\n\n", totalIssues))
 		for _, w := range warnings {
 			sb.WriteString(fmt.Sprintf("- ⚠️ %s\n", w))
@@ -1307,7 +1308,7 @@ func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) s
 		for _, i := range info {
 			sb.WriteString(fmt.Sprintf("- ℹ️ %s\n", i))
 		}
-	} else {
+	default:
 		sb.WriteString(fmt.Sprintf("❌ **%d issue(s) found:**\n\n", totalIssues))
 		for _, c := range critical {
 			sb.WriteString(fmt.Sprintf("- ❌ %s\n", c))

@@ -32,10 +32,10 @@ func AutoReview(
 	s store.Store,
 	proposalID, tenantID string,
 	diffInsights DiffInsights,
-	scopeAnalysis ScopeAnalysis,
-	coverageAnalysis CoverageAnalysis,
+	scopeAnalysis *ScopeAnalysis,
+	coverageAnalysis *CoverageAnalysis,
 	invariantResults []InvariantResult,
-	arCfg config.AutoReviewConfig,
+	arCfg *config.AutoReviewConfig,
 ) {
 	var challenges []model.Challenge
 
