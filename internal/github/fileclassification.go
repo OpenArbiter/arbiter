@@ -39,7 +39,7 @@ func ClassifyFile(path string) FileClass {
 	}
 
 	// Build files — includes Python build hooks that execute at install/test time
-	if isBuildSystemFile(base, lower) {
+	if isBuildSystemFile(base) {
 		return FileClassBuild
 	}
 
@@ -73,7 +73,7 @@ func ClassifyFile(path string) FileClass {
 
 // isBuildSystemFile returns true for files that execute code during build/install/test
 // collection — beyond CI configs.
-func isBuildSystemFile(base, lower string) bool {
+func isBuildSystemFile(base string) bool {
 	// Python build files that execute at install or collection time
 	pythonBuild := []string{
 		"setup.py", "setup.cfg", "conftest.py",

@@ -102,7 +102,7 @@ func Correlate(
 		result.Escalations = append(result.Escalations, Escalation{
 			Rule:     "dep_plus_vendored",
 			Severity: "high",
-			Message:  fmt.Sprintf("PR adds dependencies AND vendored code — vendored code may not match declared dependency"),
+			Message:  "PR adds dependencies AND vendored code — vendored code may not match declared dependency",
 			Files:    vendoredFiles,
 		})
 	}
