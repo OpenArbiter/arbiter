@@ -560,12 +560,30 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 
 	checkRunSummary := buildCheckRunSummary(result, evidence)
 
+	// Generate inline annotations from evidence
+	var annotations []Annotation
+	if p.client != nil && prNumber > 0 {
+		fileDetails, fileErr := p.client.GetPRFileDetails(ctx, installID, owner, repo, prNumber)
+		if fileErr == nil && len(fileDetails) > 0 {
+			addedLines := ExtractAddedLines(fileDetails)
+			scopeResult := AnalyzeScope("", "", fileDetails, addedLines)
+
+			var invResults []InvariantResult
+			if len(cfg.Invariants) > 0 {
+				invResults = CheckInvariants(cfg.Invariants, fileDetails, addedLines)
+			}
+
+			annotations = GenerateAnnotations(fileDetails, scopeResult, invResults)
+		}
+	}
+
 	_, err = p.client.CreateCheckRun(ctx, installID, owner, repo, headSHA, &CheckRunOpts{
-		Name:       "openarbiter/trust",
-		Status:     "completed",
-		Conclusion: conclusion,
-		Title:      fmt.Sprintf("Arbiter: %s (confidence: %.0f%%)", decision.Outcome, result.Confidence*100),
-		Summary:    checkRunSummary,
+		Name:        "openarbiter/trust",
+		Status:      "completed",
+		Conclusion:  conclusion,
+		Title:       fmt.Sprintf("Arbiter: %s (confidence: %.0f%%)", decision.Outcome, result.Confidence*100),
+		Summary:     checkRunSummary,
+		Annotations: annotations,
 	})
 	if err != nil {
 		slog.WarnContext(ctx, "could not update check run", "error", err)

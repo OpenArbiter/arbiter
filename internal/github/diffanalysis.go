@@ -207,6 +207,12 @@ func GenerateEvidence(insights DiffInsights, proposalID, tenantID string) []mode
 	return evidence
 }
 
+// AddedLine is a line added in a diff with its file line number.
+type AddedLine struct {
+	Content string
+	Line    int
+}
+
 // ExtractAddedLines parses the patch content and returns only added lines per file.
 func ExtractAddedLines(files []PRFileInfo) map[string][]string {
 	result := make(map[string][]string)
@@ -217,7 +223,7 @@ func ExtractAddedLines(files []PRFileInfo) map[string][]string {
 		var added []string
 		for _, line := range strings.Split(files[i].Patch, "\n") {
 			if strings.HasPrefix(line, "+") && !strings.HasPrefix(line, "+++") {
-				added = append(added, line[1:]) // strip the + prefix
+				added = append(added, line[1:])
 			}
 		}
 		if len(added) > 0 {
@@ -225,6 +231,122 @@ func ExtractAddedLines(files []PRFileInfo) map[string][]string {
 		}
 	}
 	return result
+}
+
+// ExtractAddedLinesWithNumbers parses the patch and returns added lines with file line numbers.
+func ExtractAddedLinesWithNumbers(files []PRFileInfo) map[string][]AddedLine {
+	result := make(map[string][]AddedLine)
+	for i := range files {
+		if files[i].Patch == "" {
+			continue
+		}
+		var added []AddedLine
+		lineNum := 0
+		for _, line := range strings.Split(files[i].Patch, "\n") {
+			// Parse hunk header: @@ -old,count +new,count @@
+			if strings.HasPrefix(line, "@@") {
+				// Extract the new file line number
+				parts := strings.Split(line, "+")
+				if len(parts) >= 2 {
+					numStr := strings.Split(parts[1], ",")[0]
+					n := 0
+					for _, c := range numStr {
+						if c >= '0' && c <= '9' {
+							n = n*10 + int(c-'0')
+						} else {
+							break
+						}
+					}
+					if n > 0 {
+						lineNum = n - 1 // will be incremented on next line
+					}
+				}
+				continue
+			}
+			if strings.HasPrefix(line, "-") {
+				continue // deleted line, don't advance new file counter
+			}
+			lineNum++
+			if strings.HasPrefix(line, "+") {
+				added = append(added, AddedLine{
+					Content: line[1:],
+					Line:    lineNum,
+				})
+			}
+		}
+		if len(added) > 0 {
+			result[files[i].Filename] = added
+		}
+	}
+	return result
+}
+
+// Annotation represents an inline comment on a specific file and line.
+type Annotation struct {
+	Path       string
+	Line       int
+	Level      string // "notice", "warning", "failure"
+	Message    string
+	Title      string
+}
+
+// GenerateAnnotations creates inline annotations from scope and invariant analysis.
+func GenerateAnnotations(files []PRFileInfo, scopeAnalysis ScopeAnalysis, invariantResults []InvariantResult) []Annotation {
+	var annotations []Annotation
+
+	addedWithLines := ExtractAddedLinesWithNumbers(files)
+
+	// Capability annotations — point to the exact line
+	for i := range scopeAnalysis.NewCapabilities {
+		cap := &scopeAnalysis.NewCapabilities[i]
+		level := "warning"
+		if cap.Name == "process_execution" || cap.Name == "eval_dynamic" {
+			level = "failure"
+		}
+
+		// Find the line number
+		if lines, ok := addedWithLines[cap.File]; ok {
+			for j := range lines {
+				if strings.Contains(lines[j].Content, cap.Pattern) {
+					annotations = append(annotations, Annotation{
+						Path:    cap.File,
+						Line:    lines[j].Line,
+						Level:   level,
+						Title:   cap.Name,
+						Message: fmt.Sprintf("New capability: %s — %s", cap.Name, cap.Description),
+					})
+					break
+				}
+			}
+		}
+	}
+
+	// Invariant failure annotations
+	for i := range invariantResults {
+		if invariantResults[i].Passed {
+			continue
+		}
+		level := "warning"
+		if invariantResults[i].Severity == "high" {
+			level = "failure"
+		}
+		// Try to find which file triggered it
+		msg := invariantResults[i].Message
+		for filename, lines := range addedWithLines {
+			if strings.Contains(msg, filename) && len(lines) > 0 {
+				annotations = append(annotations, Annotation{
+					Path:    filename,
+					Line:    lines[0].Line,
+					Level:   level,
+					Title:   invariantResults[i].Name,
+					Message: msg,
+				})
+				break
+			}
+		}
+	}
+
+	return annotations
 }
 
 // File classification helpers

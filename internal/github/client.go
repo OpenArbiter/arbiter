@@ -209,16 +209,30 @@ func (c *Client) CreateCheckRun(ctx context.Context, installationID int64, owner
 		return 0, err
 	}
 
+	output := &gh.CheckRunOutput{
+		Title:   gh.Ptr(opts.Title),
+		Summary: gh.Ptr(opts.Summary),
+	}
+
+	// Add inline annotations
+	for i := range opts.Annotations {
+		a := &opts.Annotations[i]
+		output.Annotations = append(output.Annotations, &gh.CheckRunAnnotation{
+			Path:            gh.Ptr(a.Path),
+			StartLine:       gh.Ptr(a.Line),
+			EndLine:         gh.Ptr(a.Line),
+			AnnotationLevel: gh.Ptr(a.Level),
+			Message:         gh.Ptr(a.Message),
+			Title:           gh.Ptr(a.Title),
+		})
+	}
+
 	createOpts := gh.CreateCheckRunOptions{
 		Name:    opts.Name,
 		HeadSHA: headSHA,
 		Status:  gh.Ptr(opts.Status),
-		Output: &gh.CheckRunOutput{
-			Title:   gh.Ptr(opts.Title),
-			Summary: gh.Ptr(opts.Summary),
-		},
+		Output:  output,
 	}
-	// Only set conclusion when status is completed — GitHub rejects empty conclusion
 	if opts.Conclusion != "" {
 		createOpts.Conclusion = gh.Ptr(opts.Conclusion)
 	}
@@ -239,9 +253,10 @@ func (c *Client) CreateCheckRun(ctx context.Context, installationID int64, owner
 
 // CheckRunOpts configures a check run to create.
 type CheckRunOpts struct {
-	Name       string
-	Status     string // "completed"
-	Conclusion string // "success", "failure", "neutral", "action_required"
-	Title      string
-	Summary    string
+	Name        string
+	Status      string // "completed"
+	Conclusion  string // "success", "failure", "neutral", "action_required"
+	Title       string
+	Summary     string
+	Annotations []Annotation
 }
