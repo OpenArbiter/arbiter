@@ -50,6 +50,7 @@ var capabilityPatterns = []struct {
 			"exec.Command", "exec.Run", "os.system(", "system(",
 			"popen(", "Runtime.exec", "ProcessBuilder",
 			"syscall.Exec", "syscall.ForkExec", "\"syscall\"",
+			"std::process::Command", "Command::new(",
 		},
 	},
 	{
@@ -59,6 +60,7 @@ var capabilityPatterns = []struct {
 			"net/http", "net.Dial", "http.Get", "http.Post", "http.NewRequest",
 			"requests.get", "requests.post", "urllib", "fetch(",
 			"axios", "XMLHttpRequest", "WebSocket",
+			"TcpStream", "UdpSocket", "hyper::Client",
 		},
 	},
 	{
@@ -85,6 +87,7 @@ var capabilityPatterns = []struct {
 			"eval(", "exec(", "Function(", "reflect.Value",
 			"unsafe.Pointer", "//go:linkname",
 			"plugin.Open", "\"plugin\"",
+			"unsafe {", "unsafe fn",
 		},
 	},
 	{
