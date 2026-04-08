@@ -174,7 +174,10 @@ func (a *API) HandleResolveChallenge(w http.ResponseWriter, r *http.Request) {
 	)
 
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"status":"%sd","challenge_id":"%s"}`, req.Action, req.ChallengeID)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status":       req.Action + "d",
+		"challenge_id": req.ChallengeID,
+	})
 }
 
 // HandleListProposals lists open proposals for a tenant.
