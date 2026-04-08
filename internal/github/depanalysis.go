@@ -168,14 +168,47 @@ func parsePackageJSON(lines []AddedLine, filename string) []DepChange {
 	return changes
 }
 
+// suspiciousPipDirectives are pip options that change where packages are fetched from.
+var suspiciousPipDirectives = []string{
+	"--index-url",
+	"--extra-index-url",
+	"--trusted-host",
+	"--no-verify",
+	"--find-links",
+}
+
 // parsePipRequirements extracts dependency additions from requirements.txt.
 func parsePipRequirements(lines []AddedLine, filename string) []DepChange {
 	var changes []DepChange
 	for _, line := range lines {
 		content := strings.TrimSpace(line.Content)
-		if content == "" || strings.HasPrefix(content, "#") || strings.HasPrefix(content, "-") {
+		if content == "" || strings.HasPrefix(content, "#") {
 			continue
 		}
+
+		// Flag suspicious pip directives that change package sources
+		if strings.HasPrefix(content, "-") {
+			for _, directive := range suspiciousPipDirectives {
+				if strings.Contains(content, directive) {
+					changes = append(changes, DepChange{
+						Package: content, Version: "",
+						Action: "added", File: filename, Line: line.Line,
+					})
+					break
+				}
+			}
+			continue
+		}
+
+		// Flag git+http / git+ssh URL dependencies (potential repo swap)
+		if strings.HasPrefix(content, "git+") || strings.Contains(content, "@ git+") {
+			changes = append(changes, DepChange{
+				Package: content, Version: "",
+				Action: "added", File: filename, Line: line.Line,
+			})
+			continue
+		}
+
 		// Match: package==1.2.3 or package>=1.2.3 or just package
 		var pkg, version string
 		for _, sep := range []string{"==", ">=", "<=", "~=", "!="} {

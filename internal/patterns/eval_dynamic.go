@@ -9,6 +9,10 @@ var EvalDynamic = Category{
 		// Go
 		"reflect.Value", "unsafe.Pointer", "//go:linkname",
 		"plugin.Open", "\"plugin\"",
+		// Python — indirect execution primitives
+		"getattr(", "setattr(", "globals()", "__builtins__",
+		"__import__(", "importlib", "compile(",
+		"types.FunctionType", "ctypes.",
 		// Rust
 		"unsafe {", "unsafe fn",
 		// PHP

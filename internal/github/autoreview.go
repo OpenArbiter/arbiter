@@ -160,6 +160,56 @@ func AutoReview(
 	}
 
 	// Store challenges
+	storeAutoReviewChallenges(ctx, s, proposalID, challenges)
+}
+
+// AutoReviewCorrelation generates challenges from cross-file correlation results.
+func AutoReviewCorrelation(
+	ctx context.Context,
+	s store.Store,
+	proposalID, tenantID string,
+	corrResult CorrelationResult,
+	arCfg *config.AutoReviewConfig,
+) {
+	var challenges []model.Challenge
+
+	for i := range corrResult.Escalations {
+		e := &corrResult.Escalations[i]
+		if e.Severity == "info" {
+			continue // don't create challenges for info-level findings
+		}
+
+		chalType := model.ChallengeHiddenBehaviorChange
+		switch e.Rule {
+		case "capability_plus_test_deletion":
+			chalType = model.ChallengeInsufficientTestCoverage
+		case "dep_plus_vendored":
+			chalType = model.ChallengePolicyViolation
+		}
+
+		target := "cross-file"
+		if len(e.Files) > 0 {
+			target = e.Files[0]
+		}
+
+		challenges = append(challenges, model.Challenge{
+			ChallengeID:   fmt.Sprintf("ch:corr:%s:%s:%d", proposalID, e.Rule, time.Now().UnixNano()),
+			ProposalID:    proposalID,
+			TenantID:      tenantID,
+			RaisedBy:      "arbiter-auto-review",
+			ChallengeType: chalType,
+			Target:        target,
+			Severity:      severityFromString(e.Severity),
+			Summary:       fmt.Sprintf("[cross-file] %s", e.Message),
+			Status:        model.ChallengeOpen,
+			CreatedAt:     time.Now().UTC(),
+		})
+	}
+
+	storeAutoReviewChallenges(ctx, s, proposalID, challenges)
+}
+
+func storeAutoReviewChallenges(ctx context.Context, s store.Store, proposalID string, challenges []model.Challenge) {
 	for i := range challenges {
 		existing, _ := s.ListOpenChallengesByProposal(ctx, proposalID)
 		duplicate := false

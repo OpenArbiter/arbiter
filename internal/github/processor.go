@@ -333,9 +333,18 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 			depEvidence := GenerateDepEvidence(depResult, proposalID, tenantID)
 			StoreEvidence(ctx, p.store, depEvidence)
 
+			// Cross-file correlation — escalate suspicious combinations
+			fileClasses := ClassifyFiles(fileDetails)
+			corrResult := Correlate(&scopeResult, fileClasses, addedLines, insights)
+			corrEvidence := GenerateCorrelationEvidence(corrResult, proposalID, tenantID)
+			StoreEvidence(ctx, p.store, corrEvidence)
+
 			// Auto-review — generate challenges from analysis results
 			AutoReview(ctx, p.store, proposalID, tenantID,
 				insights, &scopeResult, &coverageResult, invariantResults, &arCfg)
+
+			// Generate challenges from correlation escalations
+			AutoReviewCorrelation(ctx, p.store, proposalID, tenantID, corrResult, &arCfg)
 
 			slog.InfoContext(ctx, "full analysis complete",
 				"files", insights.TotalFiles,
@@ -346,6 +355,7 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 				"suspicious_targets", len(deepResult.SuspiciousTargets),
 				"high_entropy", len(deepResult.HighEntropyStrings),
 				"dangerous_combos", len(deepResult.DangerousCombos),
+				"correlation_escalations", len(corrResult.Escalations),
 			)
 		}
 	}

@@ -12,6 +12,9 @@ var BuildTimeExecution = Category{
 		"Makefile:", "$(shell",
 		// Package manager hooks
 		"postinstall", "preinstall", "postbuild",
+		// Python build hooks
+		"cmdclass", "entry_points", "console_scripts",
+		"build-backend", "data_files",
 		// Shell attack patterns
 		"/dev/tcp", "netcat",
 		"bash -i", "bash -c",
