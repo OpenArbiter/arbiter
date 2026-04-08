@@ -113,25 +113,48 @@ func AnalyzeScope(title, body string, files []PRFileInfo, addedLines map[string]
 		}
 	}
 
-	// Hidden character detection — Trojan Source and Unicode evasion
+	// Hidden character detection — Trojan Source, Unicode evasion, confusables
 	for filename, lines := range addedLines {
+		hiddenFound := false
+		confusableFound := false
 		for _, line := range lines {
 			for _, r := range line {
-				for _, hidden := range patterns.HiddenCharRunes {
-					if r == hidden.Char {
-						analysis.NewCapabilities = append(analysis.NewCapabilities, Capability{
-							Name:        "hidden_characters",
-							Description: "Contains invisible or misleading Unicode characters",
-							Pattern:     hidden.Name,
-							File:        filename,
-						})
-						// Only report once per file
-						goto nextFile
+				if !hiddenFound {
+					for _, hidden := range patterns.HiddenCharRunes {
+						if r == hidden.Char {
+							analysis.NewCapabilities = append(analysis.NewCapabilities, Capability{
+								Name:        "hidden_characters",
+								Description: "Contains invisible or misleading Unicode characters",
+								Pattern:     hidden.Name,
+								File:        filename,
+							})
+							hiddenFound = true
+							break
+						}
 					}
 				}
+				if !confusableFound {
+					for _, conf := range patterns.ConfusableChars {
+						if r == conf.Char {
+							analysis.NewCapabilities = append(analysis.NewCapabilities, Capability{
+								Name:        "hidden_characters",
+								Description: fmt.Sprintf("Contains confusable character: %s looks like '%s'", conf.Name, conf.LooksLike),
+								Pattern:     conf.Name,
+								File:        filename,
+							})
+							confusableFound = true
+							break
+						}
+					}
+				}
+				if hiddenFound && confusableFound {
+					break
+				}
+			}
+			if hiddenFound && confusableFound {
+				break
 			}
 		}
-	nextFile:
 	}
 
 	// Flag new capabilities

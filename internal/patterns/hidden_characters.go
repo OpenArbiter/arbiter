@@ -34,4 +34,59 @@ var HiddenCharRunes = []struct {
 	{'\u2067', "right-to-left isolate"},
 	{'\u2068', "first strong isolate"},
 	{'\u2069', "pop directional isolate"},
+	// Variation selectors
+	{'\uFE00', "variation selector 1"},
+	{'\uFE01', "variation selector 2"},
+	{'\uFE0F', "variation selector 16 (emoji)"},
+	{'\uFE0E', "variation selector 15 (text)"},
+}
+
+// ConfusableChars maps deceptive Unicode characters to the ASCII they impersonate.
+// These look like common programming characters but aren't, allowing pattern bypass.
+var ConfusableChars = []struct {
+	Char        rune
+	LooksLike   string
+	Name        string
+}{
+	// Confusable letters
+	{'\u0410', "A", "cyrillic A"},
+	{'\u0412', "B", "cyrillic B"},
+	{'\u0421', "C", "cyrillic C"},
+	{'\u0415', "E", "cyrillic E"},
+	{'\u041D', "H", "cyrillic H"},
+	{'\u041A', "K", "cyrillic K"},
+	{'\u041C', "M", "cyrillic M"},
+	{'\u041E', "O", "cyrillic O"},
+	{'\u0420', "P", "cyrillic P"},
+	{'\u0422', "T", "cyrillic T"},
+	{'\u0425', "X", "cyrillic X"},
+	{'\u0430', "a", "cyrillic a"},
+	{'\u0435', "e", "cyrillic e"},
+	{'\u043E', "o", "cyrillic o"},
+	{'\u0440', "p", "cyrillic p"},
+	{'\u0441', "c", "cyrillic c"},
+	{'\u0443', "y", "cyrillic y"},
+	{'\u0445', "x", "cyrillic x"},
+	{'\u0455', "s", "cyrillic s"},
+	{'\u0456', "i", "cyrillic i"},
+	// Confusable punctuation
+	{'\uFF0E', ".", "fullwidth period"},
+	{'\uFF08', "(", "fullwidth left paren"},
+	{'\uFF09', ")", "fullwidth right paren"},
+	{'\uFF1B', ";", "fullwidth semicolon"},
+	{'\uFF1A', ":", "fullwidth colon"},
+	{'\uFF0F', "/", "fullwidth slash"},
+	{'\u2044', "/", "fraction slash"},
+	{'\uFF3F', "_", "fullwidth underscore"},
+	{'\uFF0A', "*", "fullwidth asterisk"},
+	// Confusable quotes
+	{'\u201C', "\"", "left double quotation"},
+	{'\u201D', "\"", "right double quotation"},
+	{'\u2018', "'", "left single quotation"},
+	{'\u2019', "'", "right single quotation"},
+	// Homoglyph digits
+	{'\u01B5', "2", "latin Z with stroke (looks like 2)"},
+	{'\u03F3', "j", "greek yot"},
+	{'\u1D00', "a", "latin small capital A"},
+	{'\uA731', "s", "latin small capital S"},
 }
