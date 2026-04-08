@@ -1196,17 +1196,24 @@ func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) s
 		}
 	}
 
-	// Coverage
+	// Coverage — summarize if many files
+	var coverageFiles []string
 	for i := range evidence {
 		if evidence[i].Source == "arbiter-coverage-analysis" && evidence[i].Summary != nil &&
 			evidence[i].Result == model.EvidenceWarn {
 			for _, part := range strings.Split(*evidence[i].Summary, "; ") {
 				if part != "" {
-					// "code changed without test: file.go" → "No tests for file.go"
-					part = strings.Replace(part, "code changed without test: ", "No tests for ", 1)
-					warnings = append(warnings, part)
+					part = strings.Replace(part, "code changed without test: ", "", 1)
+					coverageFiles = append(coverageFiles, part)
 				}
 			}
+		}
+	}
+	if len(coverageFiles) > 5 {
+		warnings = append(warnings, fmt.Sprintf("%d code files changed with no tests", len(coverageFiles)))
+	} else {
+		for _, f := range coverageFiles {
+			warnings = append(warnings, "No tests for "+f)
 		}
 	}
 

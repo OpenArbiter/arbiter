@@ -133,7 +133,7 @@ var capabilityPatterns = []struct {
 			"pre-commit", "post-commit", "pre-push",
 			"Makefile:", "$(shell",
 			"postinstall", "preinstall", "postbuild",
-			"/dev/tcp", "nc ", "netcat",
+			"/dev/tcp", "netcat", " nc ",
 			"bash -i", "bash -c",
 			"curl ", "wget ",
 			"| sh", "| bash",
