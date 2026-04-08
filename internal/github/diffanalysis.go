@@ -321,7 +321,7 @@ func GenerateAnnotations(files []PRFileInfo, scopeAnalysis ScopeAnalysis, invari
 		}
 	}
 
-	// Invariant failure annotations
+	// Invariant failure annotations — find the exact line with the pattern
 	for i := range invariantResults {
 		if invariantResults[i].Passed {
 			continue
@@ -330,10 +330,37 @@ func GenerateAnnotations(files []PRFileInfo, scopeAnalysis ScopeAnalysis, invari
 		if invariantResults[i].Severity == "high" {
 			level = "failure"
 		}
-		// Try to find which file triggered it
 		msg := invariantResults[i].Message
+
+		// Extract the pattern from the message if it's a forbidden_pattern result
+		// Message format: "forbidden pattern "X" found in file.go"
+		annotated := false
 		for filename, lines := range addedWithLines {
-			if strings.Contains(msg, filename) && len(lines) > 0 {
+			if !strings.Contains(msg, filename) {
+				continue
+			}
+			// Try to find the actual pattern in the file's added lines
+			// Extract pattern from between quotes in the message
+			patternStart := strings.Index(msg, "\"")
+			patternEnd := strings.LastIndex(msg, "\"")
+			if patternStart >= 0 && patternEnd > patternStart {
+				pattern := msg[patternStart+1 : patternEnd]
+				for j := range lines {
+					if strings.Contains(lines[j].Content, pattern) {
+						annotations = append(annotations, Annotation{
+							Path:    filename,
+							Line:    lines[j].Line,
+							Level:   level,
+							Title:   invariantResults[i].Name,
+							Message: msg,
+						})
+						annotated = true
+						break
+					}
+				}
+			}
+			if !annotated && len(lines) > 0 {
+				// Fallback to first line of the file
 				annotations = append(annotations, Annotation{
 					Path:    filename,
 					Line:    lines[0].Line,
@@ -341,8 +368,8 @@ func GenerateAnnotations(files []PRFileInfo, scopeAnalysis ScopeAnalysis, invari
 					Title:   invariantResults[i].Name,
 					Message: msg,
 				})
-				break
 			}
+			break
 		}
 	}
 
