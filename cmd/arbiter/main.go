@@ -32,6 +32,7 @@ func main() {
 	})
 	logger := slog.New(gh.NewCorrelationHandler(jsonHandler))
 	slog.SetDefault(logger)
+	gh.Version = version
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()

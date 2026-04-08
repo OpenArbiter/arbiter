@@ -136,6 +136,15 @@ var capabilityPatterns = []struct {
 	},
 }
 
+// PatternStats returns counts of capability categories and individual patterns.
+func PatternStats() (categories int, patterns int) {
+	categories = len(capabilityPatterns)
+	for i := range capabilityPatterns {
+		patterns += len(capabilityPatterns[i].patterns)
+	}
+	return
+}
+
 // AnalyzeScope examines the PR diff for scope concerns.
 // addedLines should be the `+` lines from the diff (without the `+` prefix).
 func AnalyzeScope(title, body string, files []PRFileInfo, addedLines map[string][]string) ScopeAnalysis {

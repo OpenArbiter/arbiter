@@ -1185,8 +1185,10 @@ func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) s
 		}
 	}
 
-	// Confidence
-	sb.WriteString(fmt.Sprintf("\n*Confidence: %.0f%%*\n", result.Confidence*100))
+	// Footer
+	categories, patterns := PatternStats()
+	sb.WriteString(fmt.Sprintf("\n---\n*Confidence: %.0f%% · Arbiter %s · %d capability patterns across %d categories*\n",
+		result.Confidence*100, Version, patterns, categories))
 
 	return sb.String()
 }
