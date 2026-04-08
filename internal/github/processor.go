@@ -1204,6 +1204,17 @@ func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) s
 		}
 	}
 
+	// Deduplicate critical list
+	seen := make(map[string]bool)
+	var dedupedCritical []string
+	for _, c := range critical {
+		if !seen[c] {
+			seen[c] = true
+			dedupedCritical = append(dedupedCritical, c)
+		}
+	}
+	critical = dedupedCritical
+
 	// Deduplicate — remove items that appear in both critical and warnings
 	critSet := make(map[string]bool)
 	for _, c := range critical {
