@@ -113,6 +113,27 @@ func AnalyzeScope(title, body string, files []PRFileInfo, addedLines map[string]
 		}
 	}
 
+	// Hidden character detection — Trojan Source and Unicode evasion
+	for filename, lines := range addedLines {
+		for _, line := range lines {
+			for _, r := range line {
+				for _, hidden := range patterns.HiddenCharRunes {
+					if r == hidden.Char {
+						analysis.NewCapabilities = append(analysis.NewCapabilities, Capability{
+							Name:        "hidden_characters",
+							Description: "Contains invisible or misleading Unicode characters",
+							Pattern:     hidden.Name,
+							File:        filename,
+						})
+						// Only report once per file
+						goto nextFile
+					}
+				}
+			}
+		}
+	nextFile:
+	}
+
 	// Flag new capabilities
 	for i := range analysis.NewCapabilities {
 		cap := &analysis.NewCapabilities[i]
