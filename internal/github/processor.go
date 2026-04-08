@@ -295,13 +295,18 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 					}
 				}
 			}
+			var invariantResults []InvariantResult
 			if len(invariants) > 0 {
-				invariantResults := CheckInvariants(invariants, fileDetails, addedLines)
+				invariantResults = CheckInvariants(invariants, fileDetails, addedLines)
 				invariantEvidence := GenerateInvariantEvidence(invariantResults, proposalID, tenantID)
 				StoreEvidence(ctx, p.store, invariantEvidence)
 			}
 
-			slog.InfoContext(ctx, "diff+scope+coverage+invariant analysis complete",
+			// Auto-review — generate challenges from analysis results
+			AutoReview(ctx, p.store, proposalID, tenantID,
+				insights, scopeResult, coverageResult, invariantResults)
+
+			slog.InfoContext(ctx, "diff+scope+coverage+invariant+autoreview complete",
 				"files", insights.TotalFiles,
 				"diff_flags", len(insights.Flags),
 				"scope_flags", len(scopeResult.Flags),
