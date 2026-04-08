@@ -84,6 +84,7 @@ var capabilityPatterns = []struct {
 		patterns: []string{
 			"eval(", "exec(", "Function(", "reflect.Value",
 			"unsafe.Pointer", "//go:linkname",
+			"plugin.Open", "\"plugin\"",
 		},
 	},
 	{
