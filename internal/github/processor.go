@@ -305,16 +305,33 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 				StoreEvidence(ctx, p.store, invariantEvidence)
 			}
 
+			// Deep analysis — targets, entropy, combinations
+			var analysisCfg config.AnalysisConfig
+			if p.client != nil {
+				configData, cfgErr := p.client.GetFileContent(ctx, installID, repo.Owner.Login, repo.Name, ".arbiter.yml", pr.Base.Ref)
+				if cfgErr == nil && configData != nil {
+					if parsed, parseErr := config.Parse(configData); parseErr == nil {
+						analysisCfg = parsed.Analysis
+					}
+				}
+			}
+			deepResult := RunDeepAnalysis(fileDetails, analysisCfg)
+			deepEvidence := GenerateDeepAnalysisEvidence(deepResult, analysisCfg, proposalID, tenantID)
+			StoreEvidence(ctx, p.store, deepEvidence)
+
 			// Auto-review — generate challenges from analysis results
 			AutoReview(ctx, p.store, proposalID, tenantID,
 				insights, scopeResult, coverageResult, invariantResults, arCfg)
 
-			slog.InfoContext(ctx, "diff+scope+coverage+invariant+autoreview complete",
+			slog.InfoContext(ctx, "full analysis complete",
 				"files", insights.TotalFiles,
 				"diff_flags", len(insights.Flags),
 				"scope_flags", len(scopeResult.Flags),
 				"capabilities", len(scopeResult.NewCapabilities),
 				"uncovered_files", len(coverageResult.UncoveredCodeFiles),
+				"suspicious_targets", len(deepResult.SuspiciousTargets),
+				"high_entropy", len(deepResult.HighEntropyStrings),
+				"dangerous_combos", len(deepResult.DangerousCombos),
 			)
 		}
 	}
@@ -1200,6 +1217,22 @@ func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) s
 			for _, part := range strings.Split(*evidence[i].Summary, "; ") {
 				if part != "" && !strings.Contains(part, "code file(s) changed with no test") { // already in coverage
 					info = append(info, part)
+				}
+			}
+		}
+	}
+
+	// Deep analysis findings
+	for i := range evidence {
+		if evidence[i].Source == "arbiter-deep-analysis" && evidence[i].Summary != nil {
+			for _, part := range strings.Split(*evidence[i].Summary, "; ") {
+				if part == "" {
+					continue
+				}
+				if evidence[i].Result == model.EvidenceFail {
+					critical = append(critical, part)
+				} else {
+					warnings = append(warnings, part)
 				}
 			}
 		}

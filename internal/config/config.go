@@ -127,6 +127,44 @@ func (a *AutoReviewConfig) SeverityFor(finding string, defaultSev string) string
 	return configured
 }
 
+// SuspiciousTargetsConfig controls target analysis.
+type SuspiciousTargetsConfig struct {
+	Mode             string   `yaml:"mode"`               // warn, enforce, off (default: warn)
+	BlockMetadataIPs bool     `yaml:"block_metadata_ips"`  // default: true
+	BlockPrivateIPs  bool     `yaml:"block_private_ips"`   // default: false
+	AllowedDomains   []string `yaml:"allowed_domains"`     // don't flag these
+	BlockedDomains   []string `yaml:"blocked_domains"`     // always flag these
+}
+
+// EntropyConfig controls encoded payload detection.
+type EntropyConfig struct {
+	Mode      string  `yaml:"mode"`      // warn, enforce, off (default: warn)
+	MinLength int     `yaml:"min_length"` // default: 50
+	Threshold float64 `yaml:"threshold"` // default: 4.5 bits per char
+}
+
+// CombinationRule identifies a dangerous operation combination.
+type CombinationRule string
+
+const (
+	CombDecodeAndWrite   CombinationRule = "decode_and_write"
+	CombDecodeAndExecute CombinationRule = "decode_and_execute"
+	CombFetchAndExecute  CombinationRule = "fetch_and_execute"
+)
+
+// CombinationsConfig controls multi-signal combination detection.
+type CombinationsConfig struct {
+	Mode  string            `yaml:"mode"`  // warn, enforce, off (default: warn)
+	Rules []CombinationRule `yaml:"rules"` // default: all
+}
+
+// AnalysisConfig controls advanced diff analysis features.
+type AnalysisConfig struct {
+	SuspiciousTargets SuspiciousTargetsConfig `yaml:"suspicious_targets"`
+	Entropy           EntropyConfig           `yaml:"entropy"`
+	Combinations      CombinationsConfig      `yaml:"combinations"`
+}
+
 // Config represents the parsed .arbiter.yml configuration.
 type Config struct {
 	Gates        GatesConfig      `yaml:"gates"`
@@ -135,6 +173,7 @@ type Config struct {
 	Testing      TestingConfig    `yaml:"testing"`
 	Invariants   []Invariant      `yaml:"invariants"`
 	AutoReview   AutoReviewConfig `yaml:"auto_review"`
+	Analysis     AnalysisConfig   `yaml:"analysis"`
 	ScanExisting bool             `yaml:"scan_existing"`
 }
 
