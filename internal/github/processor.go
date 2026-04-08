@@ -318,19 +318,42 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 		}
 	}
 
-	// Create initial check run (in_progress)
+	// Check if diff analysis found critical issues — fail fast before CI runs
+	// This is the gatekeeper: if the diff is dangerous, block immediately
+	hasCriticalFindings := false
+	if p.client != nil {
+		challenges, chErr := p.store.ListOpenChallengesByProposal(ctx, proposalID)
+		if chErr == nil {
+			for i := range challenges {
+				if challenges[i].RaisedBy == "arbiter-auto-review" && challenges[i].Severity == model.SeverityHigh {
+					hasCriticalFindings = true
+					break
+				}
+			}
+		}
+	}
+
+	if hasCriticalFindings {
+		// Post immediate failure — don't wait for CI
+		slog.InfoContext(ctx, "critical findings in diff analysis — failing fast",
+			"proposal_id", proposalID,
+		)
+		return p.evaluateProposal(ctx, proposalID, installID, repo.Owner.Login, repo.Name, pr.Head.SHA, pr.Base.Ref, pr.Number)
+	}
+
+	// No critical findings — post in_progress and wait for CI
 	_, err = p.client.CreateCheckRun(ctx, installID, repo.Owner.Login, repo.Name, pr.Head.SHA, &CheckRunOpts{
 		Name:       "openarbiter/trust",
 		Status:     "in_progress",
 		Conclusion: "",
 		Title:      "Arbiter is evaluating this change",
-		Summary:    "Waiting for CI evidence before making a decision.",
+		Summary:    "Diff analysis clean. Waiting for CI evidence.",
 	})
 	if err != nil {
 		slog.WarnContext(ctx, "could not create check run", "error", err)
 	}
 
-	// Run initial evaluation (likely insufficient evidence at this point)
+	// Run initial evaluation
 	return p.evaluateProposal(ctx, proposalID, installID, repo.Owner.Login, repo.Name, pr.Head.SHA, pr.Base.Ref, pr.Number)
 }
 
