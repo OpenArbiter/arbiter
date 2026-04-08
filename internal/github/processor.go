@@ -319,6 +319,20 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 			deepEvidence := GenerateDeepAnalysisEvidence(deepResult, analysisCfg, proposalID, tenantID)
 			StoreEvidence(ctx, p.store, deepEvidence)
 
+			// Dependency analysis
+			var depCfg config.DependencyConfig
+			if p.client != nil {
+				configData, cfgErr := p.client.GetFileContent(ctx, installID, repo.Owner.Login, repo.Name, ".arbiter.yml", pr.Base.Ref)
+				if cfgErr == nil && configData != nil {
+					if parsed, parseErr := config.Parse(configData); parseErr == nil {
+						depCfg = parsed.Dependencies
+					}
+				}
+			}
+			depResult := AnalyzeDependencies(fileDetails, depCfg)
+			depEvidence := GenerateDepEvidence(depResult, proposalID, tenantID)
+			StoreEvidence(ctx, p.store, depEvidence)
+
 			// Auto-review — generate challenges from analysis results
 			AutoReview(ctx, p.store, proposalID, tenantID,
 				insights, scopeResult, coverageResult, invariantResults, arCfg)
@@ -1240,6 +1254,17 @@ func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) s
 					critical = append(critical, part)
 				} else {
 					warnings = append(warnings, part)
+				}
+			}
+		}
+	}
+
+	// Dependency analysis
+	for i := range evidence {
+		if evidence[i].Source == "arbiter-dep-analysis" && evidence[i].Summary != nil {
+			for _, part := range strings.Split(*evidence[i].Summary, "; ") {
+				if part != "" {
+					warnings = append(warnings, "📦 "+part)
 				}
 			}
 		}

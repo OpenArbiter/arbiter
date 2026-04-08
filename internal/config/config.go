@@ -165,6 +165,13 @@ type AnalysisConfig struct {
 	Combinations      CombinationsConfig      `yaml:"combinations"`
 }
 
+// DependencyConfig controls dependency change analysis.
+type DependencyConfig struct {
+	AllowedPrefixes []string `yaml:"allowed_prefixes"` // don't flag deps matching these
+	FlagNew         bool     `yaml:"flag_new"`         // flag any new dependency (default: true)
+	FlagDowngrades  bool     `yaml:"flag_downgrades"`  // flag version downgrades (default: true)
+}
+
 // Config represents the parsed .arbiter.yml configuration.
 type Config struct {
 	Gates        GatesConfig      `yaml:"gates"`
@@ -174,6 +181,7 @@ type Config struct {
 	Invariants   []Invariant      `yaml:"invariants"`
 	AutoReview   AutoReviewConfig `yaml:"auto_review"`
 	Analysis     AnalysisConfig   `yaml:"analysis"`
+	Dependencies DependencyConfig `yaml:"dependencies"`
 	ScanExisting bool             `yaml:"scan_existing"`
 }
 
