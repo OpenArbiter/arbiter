@@ -24,6 +24,23 @@ func severityFromString(s string) model.Severity {
 	}
 }
 
+// defaultSeverityFor returns the default severity for a capability when no
+// .arbiter.yml is present. Dangerous capabilities default to "high" (blocking)
+// so that Arbiter is secure by default. Repos can lower severity in .arbiter.yml.
+func defaultSeverityFor(capability string) string {
+	switch capability {
+	case "process_execution", "eval_dynamic", "container_escape",
+		"build_time_execution", "prompt_injection", "hidden_characters":
+		return "high"
+	case "network_access", "file_system_write", "environment_access":
+		return "medium"
+	case "crypto_operations", "linter_suppression":
+		return "warn"
+	default:
+		return "high" // unknown capabilities block by default
+	}
+}
+
 // AutoReview analyzes diff insights, scope analysis, and coverage results
 // to automatically generate challenges. Severity is configurable via .arbiter.yml.
 // Default: warn (low severity). Repo owners can escalate to blocking.
@@ -35,6 +52,7 @@ func AutoReview(
 	scopeAnalysis *ScopeAnalysis,
 	coverageAnalysis *CoverageAnalysis,
 	invariantResults []InvariantResult,
+	deepResult *DeepAnalysisResult,
 	arCfg *config.AutoReviewConfig,
 ) {
 	var challenges []model.Challenge
@@ -43,7 +61,7 @@ func AutoReview(
 	for i := range scopeAnalysis.NewCapabilities {
 		cap := &scopeAnalysis.NewCapabilities[i]
 
-		sevStr := arCfg.SeverityFor(cap.Name, "warn")
+		sevStr := arCfg.SeverityFor(cap.Name, defaultSeverityFor(cap.Name))
 		if sevStr == "off" {
 			continue
 		}
@@ -66,7 +84,7 @@ func AutoReview(
 
 	// Tests deleted
 	if diffInsights.TestsDeleted {
-		sevStr := arCfg.SeverityFor("test_deletion", "warn")
+		sevStr := arCfg.SeverityFor("test_deletion", "high")
 		if sevStr != "off" {
 			challenges = append(challenges, model.Challenge{
 				ChallengeID:   fmt.Sprintf("ch:auto:%s:tests-deleted:%d", proposalID, time.Now().UnixNano()),
@@ -104,7 +122,7 @@ func AutoReview(
 
 	// CI config modified
 	if diffInsights.CIModified {
-		sevStr := arCfg.SeverityFor("ci_modification", "warn")
+		sevStr := arCfg.SeverityFor("ci_modification", "high")
 		if sevStr != "off" {
 			challenges = append(challenges, model.Challenge{
 				ChallengeID:   fmt.Sprintf("ch:auto:%s:ci-modified:%d", proposalID, time.Now().UnixNano()),
@@ -157,6 +175,40 @@ func AutoReview(
 			Status:        model.ChallengeOpen,
 			CreatedAt:     time.Now().UTC(),
 		})
+	}
+
+	// Deep analysis findings — suspicious targets, dangerous combos
+	if deepResult != nil {
+		for i := range deepResult.SuspiciousTargets {
+			t := &deepResult.SuspiciousTargets[i]
+			challenges = append(challenges, model.Challenge{
+				ChallengeID:   fmt.Sprintf("ch:auto:%s:target:%d", proposalID, time.Now().UnixNano()),
+				ProposalID:    proposalID,
+				TenantID:      tenantID,
+				RaisedBy:      "arbiter-auto-review",
+				ChallengeType: model.ChallengeHiddenBehaviorChange,
+				Target:        t.File,
+				Severity:      model.SeverityHigh,
+				Summary:       fmt.Sprintf("Suspicious target in %s:%d — %s (%s)", t.File, t.Line, t.Target, t.Reason),
+				Status:        model.ChallengeOpen,
+				CreatedAt:     time.Now().UTC(),
+			})
+		}
+		for i := range deepResult.DangerousCombos {
+			c := &deepResult.DangerousCombos[i]
+			challenges = append(challenges, model.Challenge{
+				ChallengeID:   fmt.Sprintf("ch:auto:%s:combo:%d", proposalID, time.Now().UnixNano()),
+				ProposalID:    proposalID,
+				TenantID:      tenantID,
+				RaisedBy:      "arbiter-auto-review",
+				ChallengeType: model.ChallengeHiddenBehaviorChange,
+				Target:        c.File,
+				Severity:      model.SeverityHigh,
+				Summary:       fmt.Sprintf("Dangerous combination in %s — %s", c.File, c.Details),
+				Status:        model.ChallengeOpen,
+				CreatedAt:     time.Now().UTC(),
+			})
+		}
 	}
 
 	// Store challenges

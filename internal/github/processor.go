@@ -341,7 +341,7 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 
 			// Auto-review — generate challenges from analysis results
 			AutoReview(ctx, p.store, proposalID, tenantID,
-				insights, &scopeResult, &coverageResult, invariantResults, &arCfg)
+				insights, &scopeResult, &coverageResult, invariantResults, &deepResult, &arCfg)
 
 			// Generate challenges from correlation escalations
 			AutoReviewCorrelation(ctx, p.store, proposalID, tenantID, corrResult, &arCfg)
