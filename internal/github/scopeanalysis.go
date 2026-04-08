@@ -87,12 +87,14 @@ func AnalyzeScope(title, body string, files []PRFileInfo, addedLines map[string]
 	}
 
 	// Capability detection — scan added lines
+	// Track per file+category to report each file, but not every line
 	allPatterns := patterns.All()
-	capSeen := make(map[string]bool)
+	capSeen := make(map[string]bool) // key: "category:filename"
 	for filename, lines := range addedLines {
 		for _, line := range lines {
 			for _, cat := range allPatterns {
-				if capSeen[cat.Name] {
+				key := cat.Name + ":" + filename
+				if capSeen[key] {
 					continue
 				}
 				for _, pattern := range cat.Patterns {
@@ -103,7 +105,7 @@ func AnalyzeScope(title, body string, files []PRFileInfo, addedLines map[string]
 							Pattern:     pattern,
 							File:        filename,
 						})
-						capSeen[cat.Name] = true
+						capSeen[key] = true
 						break
 					}
 				}
