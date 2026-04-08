@@ -86,14 +86,56 @@ type Invariant struct {
 	Severity string `yaml:"severity"` // low, medium, high
 }
 
+// AutoReviewConfig controls the severity of auto-generated challenges.
+// Default: all "warn" (flag but don't block). Set to "high" to hard-block.
+type AutoReviewConfig struct {
+	ProcessExecution string `yaml:"process_execution"` // low, medium, high, warn, off
+	EvalDynamic      string `yaml:"eval_dynamic"`
+	TestDeletion     string `yaml:"test_deletion"`
+	CIModification   string `yaml:"ci_modification"`
+	ScopeCreep       string `yaml:"scope_creep"`
+	ContainerEscape  string `yaml:"container_escape"`
+	BuildTimeExec    string `yaml:"build_time_execution"`
+	LowCoverage      string `yaml:"low_coverage"`
+}
+
+// SeverityFor returns the configured severity for an auto-review finding,
+// or the provided default if not configured.
+func (a *AutoReviewConfig) SeverityFor(finding string, defaultSev string) string {
+	var configured string
+	switch finding {
+	case "process_execution":
+		configured = a.ProcessExecution
+	case "eval_dynamic":
+		configured = a.EvalDynamic
+	case "test_deletion":
+		configured = a.TestDeletion
+	case "ci_modification":
+		configured = a.CIModification
+	case "scope_creep":
+		configured = a.ScopeCreep
+	case "container_escape":
+		configured = a.ContainerEscape
+	case "build_time_execution":
+		configured = a.BuildTimeExec
+	case "low_coverage":
+		configured = a.LowCoverage
+	}
+	if configured == "" {
+		return defaultSev
+	}
+	return configured
+}
+
 // Config represents the parsed .arbiter.yml configuration.
 type Config struct {
-	Gates        GatesConfig    `yaml:"gates"`
-	Evidence     EvidenceConfig `yaml:"evidence"`
-	Actions      ActionsConfig  `yaml:"actions"`
-	Testing      TestingConfig  `yaml:"testing"`
-	Invariants   []Invariant    `yaml:"invariants"`
-	ScanExisting bool           `yaml:"scan_existing"` // evaluate open PRs on install
+	Gates        GatesConfig      `yaml:"gates"`
+	Evidence     EvidenceConfig   `yaml:"evidence"`
+	Actions      ActionsConfig    `yaml:"actions"`
+	Testing      TestingConfig    `yaml:"testing"`
+	Invariants   []Invariant      `yaml:"invariants"`
+	AutoReview   AutoReviewConfig `yaml:"auto_review"`
+	ScanExisting bool             `yaml:"scan_existing"`
 }
 
 // GatesConfig controls behavior of each evaluation gate.

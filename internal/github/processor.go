@@ -286,14 +286,15 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 			coverageEvidence := GenerateCoverageEvidence(coverageResult, proposalID, tenantID)
 			StoreEvidence(ctx, p.store, coverageEvidence)
 
-			// Invariant checks — configurable rules from .arbiter.yml
-			// Load config early for invariants (best effort)
+			// Load config early for invariants and auto-review (best effort)
 			var invariants []config.Invariant
+			var arCfg config.AutoReviewConfig
 			if p.client != nil {
 				configData, cfgErr := p.client.GetFileContent(ctx, installID, repo.Owner.Login, repo.Name, ".arbiter.yml", pr.Base.Ref)
 				if cfgErr == nil && configData != nil {
 					if parsed, parseErr := config.Parse(configData); parseErr == nil {
 						invariants = parsed.Invariants
+						arCfg = parsed.AutoReview
 					}
 				}
 			}
@@ -306,7 +307,7 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 
 			// Auto-review — generate challenges from analysis results
 			AutoReview(ctx, p.store, proposalID, tenantID,
-				insights, scopeResult, coverageResult, invariantResults)
+				insights, scopeResult, coverageResult, invariantResults, arCfg)
 
 			slog.InfoContext(ctx, "diff+scope+coverage+invariant+autoreview complete",
 				"files", insights.TotalFiles,
