@@ -184,6 +184,18 @@ func mapEventToJobType(eventType string, body []byte) (queue.JobType, error) {
 
 	case "status":
 		return queue.JobStatusEvent, nil
+
+	case "installation":
+		var inst struct {
+			Action string `json:"action"`
+		}
+		if err := json.Unmarshal(body, &inst); err != nil {
+			return "", fmt.Errorf("parsing installation payload: %w", err)
+		}
+		if inst.Action == "created" {
+			return queue.JobInstallationCreated, nil
+		}
+		return "", fmt.Errorf("unhandled installation action: %s", inst.Action)
 	}
 
 	return "", fmt.Errorf("unhandled event type: %s", eventType)

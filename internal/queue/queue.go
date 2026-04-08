@@ -27,6 +27,7 @@ const (
 	JobCheckSuiteCompleted JobType = "check_suite_completed"
 	JobPRReviewSubmitted   JobType = "pr_review_submitted"
 	JobStatusEvent         JobType = "status"
+	JobInstallationCreated JobType = "installation_created"
 )
 
 // Job represents a unit of work to be processed asynchronously.

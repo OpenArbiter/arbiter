@@ -88,11 +88,12 @@ type Invariant struct {
 
 // Config represents the parsed .arbiter.yml configuration.
 type Config struct {
-	Gates      GatesConfig    `yaml:"gates"`
-	Evidence   EvidenceConfig `yaml:"evidence"`
-	Actions    ActionsConfig  `yaml:"actions"`
-	Testing    TestingConfig  `yaml:"testing"`
-	Invariants []Invariant    `yaml:"invariants"`
+	Gates        GatesConfig    `yaml:"gates"`
+	Evidence     EvidenceConfig `yaml:"evidence"`
+	Actions      ActionsConfig  `yaml:"actions"`
+	Testing      TestingConfig  `yaml:"testing"`
+	Invariants   []Invariant    `yaml:"invariants"`
+	ScanExisting bool           `yaml:"scan_existing"` // evaluate open PRs on install
 }
 
 // GatesConfig controls behavior of each evaluation gate.

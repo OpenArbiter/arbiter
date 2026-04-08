@@ -96,6 +96,8 @@ func (p *Processor) processJob(ctx context.Context, job *queue.Job) error {
 		return p.handlePRReview(ctx, job)
 	case queue.JobStatusEvent:
 		return p.handleStatusEvent(ctx, job)
+	case queue.JobInstallationCreated:
+		return p.handleInstallation(ctx, job)
 	default:
 		slog.WarnContext(ctx, "unknown job type", "job_type", job.Type)
 		return nil
@@ -672,6 +674,131 @@ func (p *Processor) handleCheckSuiteCompleted(ctx context.Context, job *queue.Jo
 			repo.Owner.Login, repo.Name, cs.HeadSHA, "", pr.Number); err != nil {
 			slog.ErrorContext(ctx, "re-evaluation failed on check suite complete",
 				"proposal_id", proposalID, "error", err)
+		}
+	}
+
+	return nil
+}
+
+// InstallationEvent is the relevant subset of a GitHub installation webhook payload.
+type InstallationEvent struct {
+	Action       string `json:"action"`
+	Installation struct {
+		ID int64 `json:"id"`
+	} `json:"installation"`
+	Repositories []struct {
+		FullName string `json:"full_name"`
+		Name     string `json:"name"`
+		Owner    struct {
+			Login string `json:"login"`
+		} `json:"owner"`
+	} `json:"repositories"`
+}
+
+func (p *Processor) handleInstallation(ctx context.Context, job *queue.Job) error {
+	if p.client == nil {
+		return nil
+	}
+
+	var event InstallationEvent
+	if err := json.Unmarshal(job.Payload, &event); err != nil {
+		return permanent("parsing installation event: %w", err)
+	}
+
+	installID := event.Installation.ID
+	slog.InfoContext(ctx, "processing installation",
+		"installation_id", installID,
+		"repos", len(event.Repositories),
+	)
+
+	for _, repo := range event.Repositories {
+		owner := repo.Owner.Login
+		repoName := repo.Name
+		if owner == "" {
+			// Some payloads have owner in full_name
+			parts := strings.SplitN(repo.FullName, "/", 2)
+			if len(parts) == 2 {
+				owner = parts[0]
+				repoName = parts[1]
+			}
+		}
+		if owner == "" || repoName == "" {
+			continue
+		}
+
+		// Check if repo has .arbiter.yml with scan_existing enabled
+		configData, err := p.client.GetFileContent(ctx, installID, owner, repoName, ".arbiter.yml", "main")
+		if err != nil || configData == nil {
+			slog.InfoContext(ctx, "no .arbiter.yml, skipping repo",
+				"repo", repo.FullName,
+			)
+			continue
+		}
+
+		cfg, err := config.Parse(configData)
+		if err != nil {
+			slog.WarnContext(ctx, "invalid .arbiter.yml, skipping repo",
+				"repo", repo.FullName, "error", err,
+			)
+			continue
+		}
+
+		if !cfg.ScanExisting {
+			slog.InfoContext(ctx, "scan_existing not enabled, skipping repo",
+				"repo", repo.FullName,
+			)
+			continue
+		}
+
+		// Scan open PRs
+		openPRs, err := p.client.ListOpenPRs(ctx, installID, owner, repoName)
+		if err != nil {
+			slog.WarnContext(ctx, "could not list open PRs",
+				"repo", repo.FullName, "error", err,
+			)
+			continue
+		}
+
+		slog.InfoContext(ctx, "scanning existing PRs",
+			"repo", repo.FullName,
+			"open_prs", len(openPRs),
+		)
+
+		for i := range openPRs {
+			pr := &openPRs[i]
+			// Synthesize a PR opened event and enqueue it
+			payload := map[string]any{
+				"action": "opened",
+				"number": pr.Number,
+				"pull_request": map[string]any{
+					"number":   pr.Number,
+					"title":    pr.Title,
+					"body":     pr.Body,
+					"html_url": pr.HTMLURL,
+					"head":     map[string]any{"sha": pr.HeadSHA, "ref": pr.HeadRef},
+					"base":     map[string]any{"sha": "", "ref": pr.BaseRef},
+					"user":     map[string]any{"login": pr.User},
+				},
+				"repository": map[string]any{
+					"full_name": repo.FullName,
+					"owner":     map[string]any{"login": owner},
+					"name":      repoName,
+				},
+				"installation": map[string]any{"id": installID},
+			}
+			jobData, _ := json.Marshal(payload)
+			scanJob := queue.Job{
+				ID:             fmt.Sprintf("scan:%s:pr:%d", repo.FullName, pr.Number),
+				Type:           queue.JobPROpened,
+				InstallationID: installID,
+				Payload:        jobData,
+				CreatedAt:      time.Now().UTC(),
+			}
+			if err := p.queue.Enqueue(ctx, &scanJob); err != nil {
+				slog.WarnContext(ctx, "could not enqueue scan job",
+					"repo", repo.FullName, "pr", pr.Number, "error", err,
+				)
+			}
 		}
 	}
 

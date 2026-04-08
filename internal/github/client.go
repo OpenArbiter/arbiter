@@ -98,6 +98,57 @@ func (c *Client) getInstallationToken(ctx context.Context, installationID int64)
 	return token.GetToken(), nil
 }
 
+// OpenPR represents a minimal open pull request.
+type OpenPR struct {
+	Number  int
+	Title   string
+	Body    string
+	HeadSHA string
+	HeadRef string
+	BaseRef string
+	User    string
+	HTMLURL string
+}
+
+// ListOpenPRs returns all open pull requests for a repository.
+func (c *Client) ListOpenPRs(ctx context.Context, installationID int64, owner, repo string) ([]OpenPR, error) {
+	client, err := c.ghClient(ctx, installationID)
+	if err != nil {
+		return nil, err
+	}
+
+	var allPRs []OpenPR
+	opts := &gh.PullRequestListOptions{
+		State:       "open",
+		ListOptions: gh.ListOptions{PerPage: 100},
+	}
+
+	for {
+		prs, resp, err := client.PullRequests.List(ctx, owner, repo, opts)
+		if err != nil {
+			return nil, fmt.Errorf("listing PRs: %w", err)
+		}
+		for _, pr := range prs {
+			allPRs = append(allPRs, OpenPR{
+				Number:  pr.GetNumber(),
+				Title:   pr.GetTitle(),
+				Body:    pr.GetBody(),
+				HeadSHA: pr.GetHead().GetSHA(),
+				HeadRef: pr.GetHead().GetRef(),
+				BaseRef: pr.GetBase().GetRef(),
+				User:    pr.GetUser().GetLogin(),
+				HTMLURL: pr.GetHTMLURL(),
+			})
+		}
+		if resp.NextPage == 0 {
+			break
+		}
+		opts.Page = resp.NextPage
+	}
+
+	return allPRs, nil
+}
+
 // GetPRFiles returns the list of changed file paths for a pull request.
 func (c *Client) GetPRFiles(ctx context.Context, installationID int64, owner, repo string, prNumber int) ([]string, error) {
 	client, err := c.ghClient(ctx, installationID)
