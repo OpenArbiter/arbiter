@@ -74,6 +74,90 @@ gates:
 
 When no config file is present, sensible defaults are used. Config is always read from the **base branch**, not the PR branch.
 
+### Auto-reviewer severity
+
+The auto-reviewer flags dangerous patterns in PRs. By default, everything is a warning (flagged but doesn't block). Configure what blocks:
+
+```yaml
+auto_review:
+  process_execution: warn    # flag, human decides (default)
+  eval_dynamic: high         # hard block, must be resolved
+  test_deletion: medium      # block if challenge severity >= medium
+  ci_modification: warn      # flag only
+  scope_creep: off           # disable this check
+  container_escape: high     # hard block
+  build_time_execution: warn # flag only
+  low_coverage: warn         # flag only
+```
+
+Options: `high` (blocks merge), `medium`, `low`, `warn` (flags only, default), `off` (disabled).
+
+### Test coverage
+
+Define how code files map to test files:
+
+```yaml
+testing:
+  patterns:
+    - code: "src/**/*.ts"
+      test: "src/**/*.test.ts"
+    - code: "lib/**/*.py"
+      test: "tests/**/test_*.py"
+  sensitive_paths:
+    - auth/
+    - config/secrets/
+```
+
+Default patterns are included for Go, Python, JavaScript, TypeScript, Ruby, Rust, and Java.
+
+### Invariant rules
+
+Configurable rules that always apply:
+
+```yaml
+invariants:
+  - name: no-eval
+    rule: forbidden_pattern
+    pattern: "eval("
+    severity: high          # blocks merge
+
+  - name: max-pr-size
+    rule: max_lines_changed
+    value: 500
+    severity: medium        # blocks if challenge gate configured
+
+  - name: deps-lockfile
+    rule: require_together
+    files: ["go.mod", "go.sum"]
+    severity: warn          # flags only
+```
+
+Available rules: `forbidden_pattern`, `max_lines_changed`, `max_files_changed`, `no_new_files_in`, `require_together`, `require_file`.
+
+### Actions
+
+Configure what happens when decisions are made:
+
+```yaml
+actions:
+  on_accepted:
+    - type: comment
+      body: "{{details}}"
+    - type: label
+      add: arbiter-approved
+    - type: auto_merge
+      method: squash
+  on_rejected:
+    - type: comment
+      body: "{{details}}"
+    - type: label
+      add: arbiter-blocked
+```
+
+Action types: `comment`, `label`, `auto_merge`, `close`, `webhook`, `assign`.
+
+Template variables: `{{outcome}}`, `{{summary}}`, `{{details}}`, `{{confidence}}`, `{{reason}}`, `{{pr_number}}`, `{{repo}}`, `{{head_sha}}`.
+
 ## GitHub Plans
 
 Arbiter works on **all GitHub plans**, including free. No paid features are required.
