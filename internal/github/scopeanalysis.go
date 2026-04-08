@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/openarbiter/arbiter/internal/model"
+	"github.com/openarbiter/arbiter/internal/patterns"
 )
 
 // Capability represents a new power introduced by a change.
@@ -35,133 +36,9 @@ type ScopeAnalysis struct {
 	Flags []string
 }
 
-// capabilityPatterns maps diff line patterns to capabilities.
-// These are searched in added lines (+ lines) only.
-var capabilityPatterns = []struct {
-	name        string
-	description string
-	patterns    []string
-}{
-	{
-		name:        "process_execution",
-		description: "Can execute system commands",
-		patterns: []string{
-			"os/exec", "os.exec", "subprocess", "child_process",
-			"exec.Command", "exec.Run", "os.system(", "system(",
-			"popen(", "Runtime.exec", "ProcessBuilder",
-			"syscall.Exec", "syscall.ForkExec", "\"syscall\"",
-			"std::process::Command", "Command::new(",
-			"shell_exec(", "passthru(", "proc_open(",
-			"Process.Start", "ProcessStartInfo",
-			"popen(", "execvp(", "execve(",
-			"Process()", "process.run(", "NSTask",
-		},
-	},
-	{
-		name:        "network_access",
-		description: "Can make network requests",
-		patterns: []string{
-			"net/http", "net.Dial", "http.Get", "http.Post", "http.NewRequest",
-			"requests.get", "requests.post", "urllib", "fetch(",
-			"axios", "XMLHttpRequest", "WebSocket",
-			"TcpStream", "UdpSocket", "hyper::Client",
-			"curl_init(", "curl_exec(", "file_get_contents(\"http",
-			"HttpClient", "HttpURLConnection", "socket(",
-			"WebClient", "HttpWebRequest",
-			"URL(string:", "URLSession", ".readText()",
-		},
-	},
-	{
-		name:        "file_system_write",
-		description: "Can write to the file system",
-		patterns: []string{
-			"os.Create", "os.WriteFile", "os.Remove", "os.RemoveAll",
-			"os.MkdirAll", "ioutil.WriteFile",
-			"open(", "fs.writeFile", "fs.unlink", "shutil.rmtree",
-			"file_put_contents(", "fwrite(", "chmod(",
-			"FileOutputStream", "File.WriteAll", "File.Create",
-			"fopen(", "fprintf(",
-			"FileManager.default", ".writeBytes(", ".createFile(",
-			"setExecutable(",
-		},
-	},
-	{
-		name:        "environment_access",
-		description: "Reads environment variables (potential secret access)",
-		patterns: []string{
-			"os.Getenv", "os.Environ", "process.env",
-			"os.environ", "getenv(",
-		},
-	},
-	{
-		name:        "eval_dynamic",
-		description: "Dynamic code execution",
-		patterns: []string{
-			"eval(", "exec(", "Function(", "reflect.Value",
-			"unsafe.Pointer", "//go:linkname",
-			"plugin.Open", "\"plugin\"",
-			"unsafe {", "unsafe fn",
-			"unserialize(", "call_user_func",
-			"Assembly.Load", "Activator.CreateInstance",
-			"BinaryFormatter", "ObjectInputStream",
-			"dlopen(", "dlsym(",
-			"Class.forName(",
-			"NSClassFromString(", "ScriptEngineManager",
-		},
-	},
-	{
-		name:        "crypto_operations",
-		description: "Cryptographic operations",
-		patterns: []string{
-			"crypto/", "hashlib", "bcrypt", "jwt.",
-			"PrivateKey", "PublicKey", "x509",
-		},
-	},
-	{
-		name:        "linter_suppression",
-		description: "Suppressing code quality checks",
-		patterns: []string{
-			"//nolint", "# noqa", "eslint-disable", "// nosec",
-			"@SuppressWarnings", "rubocop:disable",
-		},
-	},
-	{
-		name:        "build_time_execution",
-		description: "Executes commands at build time",
-		patterns: []string{
-			"//go:generate", "go:generate",
-			"pre-commit", "post-commit", "pre-push",
-			"Makefile:", "$(shell",
-			"postinstall", "preinstall", "postbuild",
-			"/dev/tcp", "netcat", " nc ",
-			"bash -i", "bash -c",
-			"curl ", "wget ",
-			"| sh", "| bash",
-			"rm -rf /",
-		},
-	},
-	{
-		name:        "container_escape",
-		description: "Potential container escape or host access",
-		patterns: []string{
-			"--privileged", "host_pid", "hostPID",
-			"/mnt/host", "hostPath:",
-			"/etc/shadow", "/etc/passwd",
-			"docker.sock", "/var/run/docker",
-			"--net=host", "network_mode: host",
-			"SYS_ADMIN", "SYS_PTRACE",
-			"securityContext:", "allowPrivilegeEscalation",
-		},
-	},
-}
-
 // PatternStats returns counts of capability categories and individual patterns.
-func PatternStats() (categories int, patterns int) {
-	categories = len(capabilityPatterns)
-	for i := range capabilityPatterns {
-		patterns += len(capabilityPatterns[i].patterns)
-	}
-	return
+func PatternStats() (categories int, totalPatterns int) {
+	return patterns.Stats()
 }
 
 // AnalyzeScope examines the PR diff for scope concerns.
@@ -210,22 +87,23 @@ func AnalyzeScope(title, body string, files []PRFileInfo, addedLines map[string]
 	}
 
 	// Capability detection — scan added lines
+	allPatterns := patterns.All()
 	capSeen := make(map[string]bool)
 	for filename, lines := range addedLines {
 		for _, line := range lines {
-			for _, cap := range capabilityPatterns {
-				if capSeen[cap.name] {
+			for _, cat := range allPatterns {
+				if capSeen[cat.Name] {
 					continue
 				}
-				for _, pattern := range cap.patterns {
+				for _, pattern := range cat.Patterns {
 					if strings.Contains(line, pattern) {
 						analysis.NewCapabilities = append(analysis.NewCapabilities, Capability{
-							Name:        cap.name,
-							Description: cap.description,
+							Name:        cat.Name,
+							Description: cat.Description,
 							Pattern:     pattern,
 							File:        filename,
 						})
-						capSeen[cap.name] = true
+						capSeen[cat.Name] = true
 						break
 					}
 				}
