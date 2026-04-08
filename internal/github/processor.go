@@ -606,8 +606,12 @@ func (p *Processor) evaluateProposal(ctx context.Context, proposalID string, ins
 	)
 
 	// Execute configured actions — only when decision outcome changes
-	decisionChanged := previousDecision == nil || previousDecision.Outcome != decision.Outcome
-	if prNumber > 0 && decisionChanged {
+	// Skip the very first evaluation (no previous decision, no evidence) — it's just "CI hasn't run yet"
+	isFirstEval := previousDecision == nil
+	hasEvidence := len(evidence) > 0
+	decisionChanged := previousDecision != nil && previousDecision.Outcome != decision.Outcome
+	shouldComment := (isFirstEval && hasEvidence) || decisionChanged
+	if prNumber > 0 && shouldComment {
 		actCtx := &ActionContext{
 			InstallationID: installID,
 			Owner:          owner,
@@ -1091,11 +1095,136 @@ func (p *Processor) handlePRReview(ctx context.Context, job *queue.Job) error {
 func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) string {
 	var sb strings.Builder
 
-	// Decision
-	sb.WriteString(fmt.Sprintf("**%s**\n\n", result.Decision.Summary))
+	// Collect all issues by priority
+	var critical []string // blocks merge
+	var warnings []string // worth noting
+	var info []string     // informational
 
-	// Gate results
-	sb.WriteString("### Gates\n\n")
+	// Challenges (highest priority)
+	for _, gr := range result.GateResults {
+		if gr.Gate == "challenges" && gr.Status == engine.GateFailed {
+			for _, r := range gr.Reasons {
+				// Clean up the message
+				msg := r
+				msg = strings.TrimPrefix(msg, "unresolved high challenge: ")
+				msg = strings.TrimPrefix(msg, "unresolved medium challenge: ")
+				critical = append(critical, msg)
+			}
+		}
+	}
+
+	// Invariant violations
+	for i := range evidence {
+		if evidence[i].Source == "arbiter-invariant-checks" && evidence[i].Summary != nil &&
+			evidence[i].Result == model.EvidenceFail {
+			for _, part := range strings.Split(*evidence[i].Summary, "; ") {
+				if part != "" {
+					// Clean up: "[name] message" → just message
+					if idx := strings.Index(part, "] "); idx > 0 {
+						part = part[idx+2:]
+					}
+					critical = append(critical, part)
+				}
+			}
+		}
+	}
+
+	// Scope/capability findings
+	for i := range evidence {
+		if evidence[i].Source == "arbiter-scope-analysis" && evidence[i].Summary != nil &&
+			(evidence[i].Result == model.EvidenceWarn || evidence[i].Result == model.EvidenceFail) {
+			for _, part := range strings.Split(*evidence[i].Summary, "; ") {
+				if part == "" {
+					continue
+				}
+				if strings.Contains(part, "process_execution") || strings.Contains(part, "eval_dynamic") {
+					// Extract the readable part
+					if idx := strings.Index(part, " — "); idx > 0 {
+						critical = append(critical, part[idx+5:]) // skip " — "
+					} else {
+						critical = append(critical, part)
+					}
+				} else if strings.Contains(part, "new capability") {
+					if idx := strings.Index(part, " — "); idx > 0 {
+						warnings = append(warnings, part[idx+5:])
+					} else {
+						warnings = append(warnings, part)
+					}
+				}
+			}
+		}
+	}
+
+	// Coverage
+	for i := range evidence {
+		if evidence[i].Source == "arbiter-coverage-analysis" && evidence[i].Summary != nil &&
+			evidence[i].Result == model.EvidenceWarn {
+			for _, part := range strings.Split(*evidence[i].Summary, "; ") {
+				if part != "" {
+					// "code changed without test: file.go" → "No tests for file.go"
+					part = strings.Replace(part, "code changed without test: ", "No tests for ", 1)
+					warnings = append(warnings, part)
+				}
+			}
+		}
+	}
+
+	// Diff analysis
+	for i := range evidence {
+		if evidence[i].Source == "arbiter-diff-analysis" && evidence[i].Summary != nil &&
+			evidence[i].Result == model.EvidenceWarn {
+			for _, part := range strings.Split(*evidence[i].Summary, "; ") {
+				if part != "" && !strings.Contains(part, "code file(s) changed with no test") { // already in coverage
+					info = append(info, part)
+				}
+			}
+		}
+	}
+
+	// Deduplicate — remove items that appear in both critical and warnings
+	critSet := make(map[string]bool)
+	for _, c := range critical {
+		critSet[c] = true
+	}
+	var dedupedWarnings []string
+	for _, w := range warnings {
+		if !critSet[w] {
+			dedupedWarnings = append(dedupedWarnings, w)
+		}
+	}
+	warnings = dedupedWarnings
+
+	// Build the output
+	totalIssues := len(critical) + len(warnings)
+
+	if result.Decision.Outcome == model.DecisionAccepted && totalIssues == 0 {
+		sb.WriteString("✅ **All checks passed.** This PR is ready to merge.\n")
+	} else if result.Decision.Outcome == model.DecisionAccepted && totalIssues > 0 {
+		sb.WriteString(fmt.Sprintf("✅ **Approved** with %d note(s):\n\n", totalIssues))
+		for _, w := range warnings {
+			sb.WriteString(fmt.Sprintf("- ⚠️ %s\n", w))
+		}
+		for _, i := range info {
+			sb.WriteString(fmt.Sprintf("- ℹ️ %s\n", i))
+		}
+	} else {
+		sb.WriteString(fmt.Sprintf("❌ **%d issue(s) found:**\n\n", totalIssues))
+		for _, c := range critical {
+			sb.WriteString(fmt.Sprintf("- ❌ %s\n", c))
+		}
+		for _, w := range warnings {
+			sb.WriteString(fmt.Sprintf("- ⚠️ %s\n", w))
+		}
+		if len(info) > 0 {
+			sb.WriteString("\n")
+			for _, i := range info {
+				sb.WriteString(fmt.Sprintf("- ℹ️ %s\n", i))
+			}
+		}
+	}
+
+	// Gate summary as collapsed details (for people who want the raw data)
+	sb.WriteString("\n<details>\n<summary>Gate details</summary>\n\n")
 	sb.WriteString("| Gate | Status | Details |\n")
 	sb.WriteString("|---|---|---|\n")
 	for _, gr := range result.GateResults {
@@ -1111,83 +1240,17 @@ func buildCheckRunSummary(result engine.EvalResult, evidence []model.Evidence) s
 		details := ""
 		if len(gr.Reasons) > 0 {
 			details = strings.Join(gr.Reasons, "; ")
+			if len(details) > 100 {
+				details = details[:100] + "..."
+			}
 		}
 		sb.WriteString(fmt.Sprintf("| %s %s | %s | %s |\n", icon, gr.Gate, gr.Status, details))
 	}
-
-	// Diff analysis flags
-	var diffFlags []string
-	var scopeFlags []string
-	var coverageFlags []string
-	var invariantFlags []string
-	for i := range evidence {
-		if evidence[i].Summary == nil {
-			continue
-		}
-		if evidence[i].Result != model.EvidenceWarn && evidence[i].Result != model.EvidenceFail {
-			continue
-		}
-		parts := strings.Split(*evidence[i].Summary, "; ")
-		switch evidence[i].Source {
-		case "arbiter-diff-analysis":
-			for _, f := range parts {
-				if f != "" {
-					diffFlags = append(diffFlags, f)
-				}
-			}
-		case "arbiter-scope-analysis":
-			for _, f := range parts {
-				if f != "" {
-					scopeFlags = append(scopeFlags, f)
-				}
-			}
-		case "arbiter-coverage-analysis":
-			for _, f := range parts {
-				if f != "" {
-					coverageFlags = append(coverageFlags, f)
-				}
-			}
-		case "arbiter-invariant-checks":
-			for _, f := range parts {
-				if f != "" {
-					invariantFlags = append(invariantFlags, f)
-				}
-			}
-		}
-	}
-	if len(diffFlags) > 0 {
-		sb.WriteString("\n### Diff Analysis\n\n")
-		for _, flag := range diffFlags {
-			sb.WriteString(fmt.Sprintf("- ⚠️ %s\n", flag))
-		}
-	}
-	if len(scopeFlags) > 0 {
-		sb.WriteString("\n### Scope & Capability Analysis\n\n")
-		for _, flag := range scopeFlags {
-			icon := "⚠️"
-			if strings.Contains(flag, "process_execution") || strings.Contains(flag, "eval_dynamic") {
-				icon = "🔴"
-			}
-			sb.WriteString(fmt.Sprintf("- %s %s\n", icon, flag))
-		}
-	}
-
-	if len(coverageFlags) > 0 {
-		sb.WriteString("\n### Test Coverage\n\n")
-		for _, flag := range coverageFlags {
-			sb.WriteString(fmt.Sprintf("- 🧪 %s\n", flag))
-		}
-	}
-	if len(invariantFlags) > 0 {
-		sb.WriteString("\n### Invariant Checks\n\n")
-		for _, flag := range invariantFlags {
-			sb.WriteString(fmt.Sprintf("- 📏 %s\n", flag))
-		}
-	}
+	sb.WriteString("\n</details>\n")
 
 	// Footer
 	categories, patterns := PatternStats()
-	sb.WriteString(fmt.Sprintf("\n---\n*Confidence: %.0f%% · Arbiter %s · %d capability patterns across %d categories*\n",
+	sb.WriteString(fmt.Sprintf("\n---\n*Confidence: %.0f%% · Arbiter %s · %d patterns across %d categories*\n",
 		result.Confidence*100, Version, patterns, categories))
 
 	return sb.String()
