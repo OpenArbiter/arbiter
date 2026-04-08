@@ -112,6 +112,11 @@ func AnalyzeDiff(files []PRFileInfo) DiffInsights {
 			insights.Flags = append(insights.Flags, fmt.Sprintf("dependency file modified: %s", f.Filename))
 		}
 
+		// CI-adjacent files (build scripts, Dockerfiles, Makefiles)
+		if isCIAdjacentFile(lower) && !isCIFile(lower) {
+			insights.Flags = append(insights.Flags, fmt.Sprintf("build/deploy file modified: %s — may affect CI pipeline", f.Filename))
+		}
+
 		// Config/infra files
 		if isConfigFile(lower) {
 			insights.ConfigModified = true
@@ -416,6 +421,14 @@ func isDepsFile(path string) bool {
 func isConfigFile(path string) bool {
 	return containsAny(path, "dockerfile", "docker-compose", ".env", "makefile",
 		".arbiter.yml", "terraform", ".tf", "helm/", "k8s/", "kubernetes/")
+}
+
+func isCIAdjacentFile(path string) bool {
+	return containsAny(path, "makefile", "dockerfile", "docker-compose",
+		"scripts/", "deploy/", "build/", ".buildkite/",
+		"package.json", "setup.py", "setup.cfg", "pyproject.toml",
+		"Gemfile", "Rakefile", "Taskfile",
+		"justfile", "Earthfile", "Tiltfile")
 }
 
 func isSecurityFile(path string) bool {
