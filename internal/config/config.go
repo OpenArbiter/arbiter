@@ -138,7 +138,7 @@ type SuspiciousTargetsConfig struct {
 
 // EntropyConfig controls encoded payload detection.
 type EntropyConfig struct {
-	Mode      string  `yaml:"mode"`      // warn, enforce, off (default: warn)
+	Mode      string  `yaml:"mode"`      // warn, enforce, off (default: off — high false positive rate)
 	MinLength int     `yaml:"min_length"` // default: 50
 	Threshold float64 `yaml:"threshold"` // default: 4.5 bits per char
 }

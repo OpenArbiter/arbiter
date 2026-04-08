@@ -144,8 +144,9 @@ func RunDeepAnalysis(files []PRFileInfo, cfg config.AnalysisConfig) DeepAnalysis
 		}
 	}
 
-	// Entropy analysis
-	if cfg.Entropy.Mode != "off" {
+	// Entropy analysis — default off (high false positive rate)
+	// Enable with: analysis.entropy.mode: warn
+	if cfg.Entropy.Mode == "warn" || cfg.Entropy.Mode == "enforce" {
 		minLen := cfg.Entropy.MinLength
 		if minLen == 0 {
 			minLen = 50
