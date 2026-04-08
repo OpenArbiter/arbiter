@@ -51,6 +51,7 @@ var capabilityPatterns = []struct {
 			"popen(", "Runtime.exec", "ProcessBuilder",
 			"syscall.Exec", "syscall.ForkExec", "\"syscall\"",
 			"std::process::Command", "Command::new(",
+			"shell_exec(", "passthru(", "proc_open(",
 		},
 	},
 	{
@@ -61,6 +62,7 @@ var capabilityPatterns = []struct {
 			"requests.get", "requests.post", "urllib", "fetch(",
 			"axios", "XMLHttpRequest", "WebSocket",
 			"TcpStream", "UdpSocket", "hyper::Client",
+			"curl_init(", "curl_exec(", "file_get_contents(\"http",
 		},
 	},
 	{
@@ -70,6 +72,7 @@ var capabilityPatterns = []struct {
 			"os.Create", "os.WriteFile", "os.Remove", "os.RemoveAll",
 			"os.MkdirAll", "ioutil.WriteFile",
 			"open(", "fs.writeFile", "fs.unlink", "shutil.rmtree",
+			"file_put_contents(", "fwrite(", "chmod(",
 		},
 	},
 	{
@@ -88,6 +91,7 @@ var capabilityPatterns = []struct {
 			"unsafe.Pointer", "//go:linkname",
 			"plugin.Open", "\"plugin\"",
 			"unsafe {", "unsafe fn",
+			"unserialize(", "call_user_func",
 		},
 	},
 	{
