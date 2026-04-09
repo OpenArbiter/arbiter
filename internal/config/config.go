@@ -150,6 +150,8 @@ const (
 	CombDecodeAndWrite   CombinationRule = "decode_and_write"
 	CombDecodeAndExecute CombinationRule = "decode_and_execute"
 	CombFetchAndExecute  CombinationRule = "fetch_and_execute"
+	CombSocketDNS        CombinationRule = "socket_and_dns"
+	CombEnvAndLeak       CombinationRule = "environ_and_leak"
 )
 
 // CombinationsConfig controls multi-signal combination detection.

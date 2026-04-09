@@ -187,6 +187,8 @@ func RunDeepAnalysis(files []PRFileInfo, cfg *config.AnalysisConfig) DeepAnalysi
 				config.CombDecodeAndWrite,
 				config.CombDecodeAndExecute,
 				config.CombFetchAndExecute,
+				config.CombSocketDNS,
+				config.CombEnvAndLeak,
 			}
 		}
 
@@ -233,6 +235,22 @@ func checkCombination(rule config.CombinationRule, content string) string {
 			"| sh", "| bash", "Process(", "Command(")
 		if hasFetch && hasExec {
 			return "network fetch + execution — possible remote code execution"
+		}
+	case config.CombSocketDNS:
+		hasSocket := containsAny(content, "socket.socket", "SOCK_DGRAM", "SOCK_RAW",
+			"socket(AF_INET", "sendto(", "recvfrom(")
+		hasDNS := containsAny(content, "port 53", ":53", "53)", "\"53\"",
+			"dns", "DNS", "nameserver")
+		if hasSocket && hasDNS {
+			return "raw socket + DNS port — possible DNS exfiltration via raw UDP"
+		}
+	case config.CombEnvAndLeak:
+		hasEnv := containsAny(content, "os.environ", "os.getenv", "process.env",
+			"os.Getenv", "System.getenv", "GITHUB_TOKEN", "AWS_SECRET")
+		hasLeak := containsAny(content, "print(", "println(", "console.log",
+			"logging.", "logger.", "sys.stdout", "stderr")
+		if hasEnv && hasLeak {
+			return "environment access + output — possible credential leak via stdout/logs"
 		}
 	}
 	return ""

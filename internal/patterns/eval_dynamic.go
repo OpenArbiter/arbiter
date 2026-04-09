@@ -13,6 +13,14 @@ var EvalDynamic = Category{
 		"getattr(", "setattr(", "globals()", "__builtins__",
 		"__import__(", "importlib", "compile(",
 		"types.FunctionType", "ctypes.",
+		// Insecure deserialization (arbitrary code execution via data)
+		"pickle.load", "pickle.loads", "shelve.open",
+		"yaml.load(", "yaml.UnsafeLoader", "yaml.FullLoader",
+		"marshal.load", "marshal.loads",
+		"jsonpickle.decode",
+		// XML external entity injection
+		"xml.etree.ElementTree.parse", "xml.sax.make_parser",
+		"lxml.etree.parse", "XMLReader(",
 		// Rust
 		"unsafe {", "unsafe fn",
 		// PHP
