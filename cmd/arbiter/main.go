@@ -187,27 +187,18 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 	rateLimiter := gh.NewRateLimiter(100, 200) // 100 req/s, burst 200
 	mux.Handle("/webhook", rateLimiter.Middleware(gh.NewWebhookHandler(webhookSecret, q, stats)))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		patCats, patCount := patterns.Stats()
 		status := struct {
-			Status           string `json:"status"`
-			Version          string `json:"version"`
-			Uptime           string `json:"uptime"`
-			DB               string `json:"db"`
-			Redis            string `json:"redis"`
-			PatternCategories int   `json:"pattern_categories"`
-			PatternCount     int    `json:"pattern_count"`
-			ConfusableChars  int    `json:"confusable_chars"`
-			HiddenCharRules  int    `json:"hidden_char_rules"`
+			Status  string `json:"status"`
+			Version string `json:"version"`
+			Uptime  string `json:"uptime"`
+			DB      string `json:"db"`
+			Redis   string `json:"redis"`
 		}{
-			Status:           "ok",
-			Version:          version,
-			Uptime:           stats.Snapshot().Uptime,
-			DB:               "ok",
-			Redis:            "ok",
-			PatternCategories: patCats,
-			PatternCount:     patCount,
-			ConfusableChars:  patterns.ConfusableMapSize(),
-			HiddenCharRules:  len(patterns.HiddenCharRunes),
+			Status:  "ok",
+			Version: version,
+			Uptime:  stats.Snapshot().Uptime,
+			DB:      "ok",
+			Redis:   "ok",
 		}
 		if err := pgStore.Ping(r.Context()); err != nil {
 			status.Status = "degraded"
@@ -240,6 +231,38 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 	})
+
+	// Debug endpoint — detection diagnostics, requires GitHub token
+	mux.Handle("/debug", gh.NewAPIAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		patCats, patCount := patterns.Stats()
+		var catDetails []struct {
+			Name     string `json:"name"`
+			Patterns int    `json:"patterns"`
+		}
+		for _, cat := range patterns.All() {
+			catDetails = append(catDetails, struct {
+				Name     string `json:"name"`
+				Patterns int    `json:"patterns"`
+			}{Name: cat.Name, Patterns: len(cat.Patterns)})
+		}
+		resp := struct {
+			Version           string `json:"version"`
+			PatternCategories int    `json:"pattern_categories"`
+			PatternCount      int    `json:"pattern_count"`
+			ConfusableChars   int    `json:"confusable_chars"`
+			HiddenCharRules   int    `json:"hidden_char_rules"`
+			Categories        any    `json:"categories"`
+		}{
+			Version:           version,
+			PatternCategories: patCats,
+			PatternCount:      patCount,
+			ConfusableChars:   patterns.ConfusableMapSize(),
+			HiddenCharRules:   len(patterns.HiddenCharRunes),
+			Categories:        catDetails,
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	})))
 
 	// API endpoints — read endpoints are open, write endpoints require GitHub token
 	api := gh.NewAPI(pgStore)
