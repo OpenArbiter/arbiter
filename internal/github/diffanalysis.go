@@ -71,6 +71,7 @@ type DiffInsights struct {
 	SecurityFiles   bool
 	BinaryFiles     bool
 	LargePR         bool
+	HomoglyphFiles  bool
 	Flags           []string // human-readable flags
 }
 
@@ -137,8 +138,9 @@ func AnalyzeDiff(files []PRFileInfo) DiffInsights {
 
 		// Homoglyph filename detection — Cyrillic/Greek chars in filenames
 		if normalized := patterns.NormalizeConfusables(f.Filename); normalized != f.Filename {
+			insights.HomoglyphFiles = true
 			insights.Flags = append(insights.Flags,
-				fmt.Sprintf("homoglyph filename: %s (normalizes to: %s) — possible Trojan Source attack", f.Filename, normalized))
+				fmt.Sprintf("CRITICAL: homoglyph filename: %s (normalizes to: %s) — possible Trojan Source attack", f.Filename, normalized))
 		}
 	}
 

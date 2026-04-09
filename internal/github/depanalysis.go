@@ -94,6 +94,34 @@ func AnalyzeDependencies(files []PRFileInfo, cfg config.DependencyConfig) DepAna
 				}
 			}
 		}
+
+		// Go replace directives — can redirect to attacker modules
+		if baseLower == "go.mod" {
+			for _, line := range lines {
+				if containsAny(line.Content, "replace ", "replace\t") {
+					result.Flags = append(result.Flags, fmt.Sprintf("go.mod replace directive in %s:%d — %s", f.Filename, line.Line, strings.TrimSpace(line.Content)))
+				}
+			}
+		}
+
+		// Cargo alternative registries
+		if strings.Contains(lower, ".cargo/config") {
+			result.Flags = append(result.Flags, fmt.Sprintf("Cargo config modified: %s — may redirect crate sources", f.Filename))
+			for _, line := range lines {
+				if containsAny(line.Content, "registry", "index =", "replace-with") {
+					result.Flags = append(result.Flags, fmt.Sprintf("Cargo registry override in %s:%d — %s", f.Filename, line.Line, strings.TrimSpace(line.Content)))
+				}
+			}
+		}
+
+		// Gemfile source blocks
+		if baseLower == "gemfile" {
+			for _, line := range lines {
+				if containsAny(line.Content, "source ") && !containsAny(line.Content, "rubygems.org") {
+					result.Flags = append(result.Flags, fmt.Sprintf("non-default Gemfile source in %s:%d — %s", f.Filename, line.Line, strings.TrimSpace(line.Content)))
+				}
+			}
+		}
 	}
 
 	// Generate flags from changes

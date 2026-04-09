@@ -82,6 +82,22 @@ func AutoReview(
 		})
 	}
 
+	// Homoglyph filenames — always critical, not configurable
+	if diffInsights.HomoglyphFiles {
+		challenges = append(challenges, model.Challenge{
+			ChallengeID:   fmt.Sprintf("ch:auto:%s:homoglyph-filename:%d", proposalID, time.Now().UnixNano()),
+			ProposalID:    proposalID,
+			TenantID:      tenantID,
+			RaisedBy:      "arbiter-auto-review",
+			ChallengeType: model.ChallengeHiddenBehaviorChange,
+			Target:        "filenames",
+			Severity:      model.SeverityHigh,
+			Summary:       "File with confusable Unicode characters in filename — possible Trojan Source attack",
+			Status:        model.ChallengeOpen,
+			CreatedAt:     time.Now().UTC(),
+		})
+	}
+
 	// Tests deleted
 	if diffInsights.TestsDeleted {
 		sevStr := arCfg.SeverityFor("test_deletion", "high")
