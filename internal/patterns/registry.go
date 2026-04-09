@@ -22,6 +22,7 @@ func All() []Category {
 		BuildTimeExecution,
 		ContainerEscape,
 		PromptInjection,
+		SecurityWeakening,
 	}
 }
 
