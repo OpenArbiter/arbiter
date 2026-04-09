@@ -78,6 +78,7 @@ func isBuildSystemFile(base string) bool {
 	pythonBuild := []string{
 		"setup.py", "setup.cfg", "conftest.py",
 		"noxfile.py", "tox.ini", "fabfile.py",
+		".pre-commit-config.yaml",
 	}
 	for _, f := range pythonBuild {
 		if base == f {

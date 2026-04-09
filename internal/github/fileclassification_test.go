@@ -28,6 +28,7 @@ func TestClassifyFile(t *testing.T) {
 		{"tox.ini", FileClassBuild},
 		{"CMakeLists.txt", FileClassBuild},
 		{"foo.pth", FileClassBuild},
+		{".pre-commit-config.yaml", FileClassBuild},
 
 		// CI files
 		{".github/workflows/ci.yml", FileClassCI},

@@ -1,5 +1,7 @@
 package patterns
 
+import "unicode/utf8"
+
 var HiddenCharacters = Category{
 	Name:        "hidden_characters",
 	Description: "Contains invisible or misleading Unicode characters",
@@ -39,6 +41,44 @@ var HiddenCharRunes = []struct {
 	{'\uFE01', "variation selector 2"},
 	{'\uFE0F', "variation selector 16 (emoji)"},
 	{'\uFE0E', "variation selector 15 (text)"},
+}
+
+// confusableMap is a precomputed lookup for NormalizeConfusables.
+var confusableMap map[rune]string
+
+func init() {
+	confusableMap = make(map[rune]string, len(ConfusableChars))
+	for _, c := range ConfusableChars {
+		confusableMap[c.Char] = c.LooksLike
+	}
+}
+
+// NormalizeConfusables replaces all known confusable Unicode characters with
+// their ASCII equivalents. This allows pattern matching to catch homoglyph
+// attacks like Cyrillic "е" in "os/еxec" → "os/exec".
+func NormalizeConfusables(s string) string {
+	var changed bool
+	for _, r := range s {
+		if _, ok := confusableMap[r]; ok {
+			changed = true
+			break
+		}
+	}
+	if !changed {
+		return s // fast path: no confusables found
+	}
+
+	var b []byte
+	for _, r := range s {
+		if ascii, ok := confusableMap[r]; ok {
+			b = append(b, ascii...)
+		} else {
+			var buf [utf8.UTFMax]byte
+			n := utf8.EncodeRune(buf[:], r)
+			b = append(b, buf[:n]...)
+		}
+	}
+	return string(b)
 }
 
 // ConfusableChars maps deceptive Unicode characters to the ASCII they impersonate.

@@ -428,7 +428,8 @@ func isCIAdjacentFile(path string) bool {
 		"scripts/", "deploy/", "build/", ".buildkite/",
 		"package.json", "setup.py", "setup.cfg", "pyproject.toml",
 		"Gemfile", "Rakefile", "Taskfile",
-		"justfile", "Earthfile", "Tiltfile")
+		"justfile", "Earthfile", "Tiltfile",
+		".pre-commit-config.yaml")
 }
 
 func isSecurityFile(path string) bool {

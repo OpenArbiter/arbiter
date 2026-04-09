@@ -7,6 +7,7 @@ import (
 
 	"github.com/openarbiter/arbiter/internal/config"
 	"github.com/openarbiter/arbiter/internal/model"
+	"github.com/openarbiter/arbiter/internal/patterns"
 )
 
 // InvariantResult is the outcome of checking one invariant.
@@ -155,6 +156,13 @@ func checkForbiddenPattern(inv *config.Invariant, addedLines map[string][]string
 				return InvariantResult{
 					Name: inv.Name, Passed: false, Severity: inv.Severity,
 					Message: fmt.Sprintf("forbidden pattern %q found in %s", inv.Pattern, filename),
+				}
+			}
+			// Also match against homoglyph-normalized line
+			if normalized := patterns.NormalizeConfusables(line); normalized != line && strings.Contains(normalized, inv.Pattern) {
+				return InvariantResult{
+					Name: inv.Name, Passed: false, Severity: inv.Severity,
+					Message: fmt.Sprintf("forbidden pattern %q found in %s (homoglyph-normalized)", inv.Pattern, filename),
 				}
 			}
 		}

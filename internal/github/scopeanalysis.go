@@ -92,13 +92,17 @@ func AnalyzeScope(title, body string, files []PRFileInfo, addedLines map[string]
 	capSeen := make(map[string]bool) // key: "category:filename"
 	for filename, lines := range addedLines {
 		for _, line := range lines {
+			// Normalize confusable Unicode characters so homoglyph attacks
+			// (e.g., Cyrillic "е" in "os/еxec") match patterns.
+			normalized := patterns.NormalizeConfusables(line)
+
 			for _, cat := range allPatterns {
 				key := cat.Name + ":" + filename
 				if capSeen[key] {
 					continue
 				}
 				for _, pattern := range cat.Patterns {
-					if strings.Contains(line, pattern) {
+					if strings.Contains(line, pattern) || strings.Contains(normalized, pattern) {
 						analysis.NewCapabilities = append(analysis.NewCapabilities, Capability{
 							Name:        cat.Name,
 							Description: cat.Description,
