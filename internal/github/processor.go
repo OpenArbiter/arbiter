@@ -346,16 +346,32 @@ func (p *Processor) handlePREvent(ctx context.Context, job *queue.Job) error {
 			// Generate challenges from correlation escalations
 			AutoReviewCorrelation(ctx, p.store, proposalID, tenantID, corrResult, &arCfg)
 
+			// Build capability name list for summary
+			capNames := make(map[string]bool)
+			for i := range scopeResult.NewCapabilities {
+				capNames[scopeResult.NewCapabilities[i].Name] = true
+			}
+			var capList []string
+			for name := range capNames {
+				capList = append(capList, name)
+			}
+
 			slog.InfoContext(ctx, "full analysis complete",
+				"pr", pr.Number,
+				"proposal_id", proposalID,
 				"files", insights.TotalFiles,
+				"additions", insights.TotalAdditions,
+				"deletions", insights.TotalDeletions,
+				"capabilities", len(scopeResult.NewCapabilities),
+				"capability_types", capList,
 				"diff_flags", len(insights.Flags),
 				"scope_flags", len(scopeResult.Flags),
-				"capabilities", len(scopeResult.NewCapabilities),
 				"uncovered_files", len(coverageResult.UncoveredCodeFiles),
 				"suspicious_targets", len(deepResult.SuspiciousTargets),
 				"high_entropy", len(deepResult.HighEntropyStrings),
 				"dangerous_combos", len(deepResult.DangerousCombos),
 				"correlation_escalations", len(corrResult.Escalations),
+				"dep_flags", len(depResult.Flags),
 			)
 		}
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	gh "github.com/openarbiter/arbiter/internal/github"
+	"github.com/openarbiter/arbiter/internal/patterns"
 	"github.com/openarbiter/arbiter/internal/queue"
 	"github.com/openarbiter/arbiter/internal/store"
 )
@@ -186,18 +187,27 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 	rateLimiter := gh.NewRateLimiter(100, 200) // 100 req/s, burst 200
 	mux.Handle("/webhook", rateLimiter.Middleware(gh.NewWebhookHandler(webhookSecret, q, stats)))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		patCats, patCount := patterns.Stats()
 		status := struct {
-			Status  string `json:"status"`
-			Version string `json:"version"`
-			Uptime  string `json:"uptime"`
-			DB      string `json:"db"`
-			Redis   string `json:"redis"`
+			Status           string `json:"status"`
+			Version          string `json:"version"`
+			Uptime           string `json:"uptime"`
+			DB               string `json:"db"`
+			Redis            string `json:"redis"`
+			PatternCategories int   `json:"pattern_categories"`
+			PatternCount     int    `json:"pattern_count"`
+			ConfusableChars  int    `json:"confusable_chars"`
+			HiddenCharRules  int    `json:"hidden_char_rules"`
 		}{
-			Status:  "ok",
-			Version: version,
-			Uptime:  stats.Snapshot().Uptime,
-			DB:      "ok",
-			Redis:   "ok",
+			Status:           "ok",
+			Version:          version,
+			Uptime:           stats.Snapshot().Uptime,
+			DB:               "ok",
+			Redis:            "ok",
+			PatternCategories: patCats,
+			PatternCount:     patCount,
+			ConfusableChars:  patterns.ConfusableMapSize(),
+			HiddenCharRules:  len(patterns.HiddenCharRunes),
 		}
 		if err := pgStore.Ping(r.Context()); err != nil {
 			status.Status = "degraded"
@@ -255,7 +265,15 @@ func run(ctx context.Context, cancel context.CancelFunc) error {
 	}()
 
 	// Start HTTP server
-	slog.InfoContext(ctx, "arbiter starting", "addr", listenAddr)
+	patCategories, patTotal := patterns.Stats()
+	slog.InfoContext(ctx, "arbiter starting",
+		"addr", listenAddr,
+		"version", version,
+		"pattern_categories", patCategories,
+		"pattern_count", patTotal,
+		"confusable_map_size", patterns.ConfusableMapSize(),
+		"hidden_char_count", len(patterns.HiddenCharRunes),
+	)
 	go func() {
 		if err := server.ListenAndServe(); err != http.ErrServerClosed {
 			slog.Error("http server error", "error", err)
