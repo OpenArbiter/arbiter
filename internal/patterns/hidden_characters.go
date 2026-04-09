@@ -53,6 +53,12 @@ func init() {
 	}
 }
 
+// ConfusableMapSize returns the number of entries in the confusable character map.
+// Used for debugging to verify the map was initialized correctly.
+func ConfusableMapSize() int {
+	return len(confusableMap)
+}
+
 // NormalizeConfusables replaces all known confusable Unicode characters with
 // their ASCII equivalents. This allows pattern matching to catch homoglyph
 // attacks like Cyrillic "е" in "os/еxec" → "os/exec".

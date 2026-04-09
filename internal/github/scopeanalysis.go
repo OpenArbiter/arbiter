@@ -2,6 +2,7 @@ package github
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -95,6 +96,27 @@ func AnalyzeScope(title, body string, files []PRFileInfo, addedLines map[string]
 			// Normalize confusable Unicode characters so homoglyph attacks
 			// (e.g., Cyrillic "е" in "os/еxec") match patterns.
 			normalized := patterns.NormalizeConfusables(line)
+			if normalized != line {
+				slog.Info("homoglyph normalization changed line",
+					"file", filename,
+					"original_bytes", fmt.Sprintf("%x", []byte(line)),
+					"normalized", normalized,
+					"original_len", len(line),
+					"normalized_len", len(normalized),
+				)
+			}
+
+			// Log non-ASCII content for debugging unicode bypass issues
+			for _, r := range line {
+				if r > 127 {
+					slog.Info("non-ASCII character in added line",
+						"file", filename,
+						"char", fmt.Sprintf("U+%04X", r),
+						"line_preview", truncate(line, 80),
+					)
+					break // one log per line is enough
+				}
+			}
 
 			for _, cat := range allPatterns {
 				key := cat.Name + ":" + filename
@@ -126,6 +148,11 @@ func AnalyzeScope(title, body string, files []PRFileInfo, addedLines map[string]
 				if !hiddenFound {
 					for _, hidden := range patterns.HiddenCharRunes {
 						if r == hidden.Char {
+							slog.Info("hidden character detected",
+								"file", filename,
+								"char", fmt.Sprintf("U+%04X", r),
+								"name", hidden.Name,
+							)
 							analysis.NewCapabilities = append(analysis.NewCapabilities, Capability{
 								Name:        "hidden_characters",
 								Description: "Contains invisible or misleading Unicode characters",
@@ -140,6 +167,12 @@ func AnalyzeScope(title, body string, files []PRFileInfo, addedLines map[string]
 				if !confusableFound {
 					for _, conf := range patterns.ConfusableChars {
 						if r == conf.Char {
+							slog.Info("confusable character detected",
+								"file", filename,
+								"char", fmt.Sprintf("U+%04X", r),
+								"name", conf.Name,
+								"looks_like", conf.LooksLike,
+							)
 							analysis.NewCapabilities = append(analysis.NewCapabilities, Capability{
 								Name:        "hidden_characters",
 								Description: fmt.Sprintf("Contains confusable character: %s looks like '%s'", conf.Name, conf.LooksLike),
@@ -168,7 +201,20 @@ func AnalyzeScope(title, body string, files []PRFileInfo, addedLines map[string]
 			fmt.Sprintf("new capability: %s — %s (in %s, matched: %s)", cap.Name, cap.Description, cap.File, cap.Pattern))
 	}
 
+	slog.Info("scope analysis complete",
+		"files_scanned", len(addedLines),
+		"capabilities_found", len(analysis.NewCapabilities),
+		"confusable_map_size", patterns.ConfusableMapSize(),
+	)
+
 	return analysis
+}
+
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
 }
 
 // GenerateScopeEvidence creates Evidence records from scope analysis.
