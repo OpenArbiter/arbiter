@@ -65,6 +65,34 @@ func AnalyzeDependencies(files []PRFileInfo, cfg config.DependencyConfig) DepAna
 		case strings.Contains(lower, "pom.xml") || strings.Contains(lower, "build.gradle"):
 			// Java — just flag the file change, parsing XML/Gradle is complex
 			result.Flags = append(result.Flags, fmt.Sprintf("Java build config modified: %s", f.Filename))
+		case baseLower == "pip.conf" || baseLower == "pip.ini":
+			result.Flags = append(result.Flags, fmt.Sprintf("pip config modified: %s — may redirect package sources", f.Filename))
+			for _, line := range lines {
+				if containsAny(line.Content, "index-url", "extra-index-url", "trusted-host", "find-links") {
+					result.Flags = append(result.Flags, fmt.Sprintf("pip source override in %s:%d — %s", f.Filename, line.Line, strings.TrimSpace(line.Content)))
+				}
+			}
+		case baseLower == ".npmrc" || baseLower == ".yarnrc" || baseLower == ".yarnrc.yml":
+			result.Flags = append(result.Flags, fmt.Sprintf("package manager config modified: %s — may redirect package sources", f.Filename))
+			for _, line := range lines {
+				if containsAny(line.Content, "registry", "always-auth", "//registry") {
+					result.Flags = append(result.Flags, fmt.Sprintf("registry override in %s:%d — %s", f.Filename, line.Line, strings.TrimSpace(line.Content)))
+				}
+			}
+		case baseLower == "pyproject.toml":
+			// Check for Poetry source manipulation
+			for _, line := range lines {
+				if containsAny(line.Content, "[[tool.poetry.source]]", "priority", "url =") {
+					result.Flags = append(result.Flags, fmt.Sprintf("Poetry source config in %s:%d — %s", f.Filename, line.Line, strings.TrimSpace(line.Content)))
+				}
+			}
+		case baseLower == "package-lock.json" || baseLower == "yarn.lock" || baseLower == "pnpm-lock.yaml":
+			// Lockfile manipulation — check for non-standard resolved URLs
+			for _, line := range lines {
+				if containsAny(line.Content, "resolved") && !containsAny(line.Content, "registry.npmjs.org", "registry.yarnpkg.com") {
+					result.Flags = append(result.Flags, fmt.Sprintf("non-standard resolved URL in %s:%d — %s", f.Filename, line.Line, strings.TrimSpace(line.Content)))
+				}
+			}
 		}
 	}
 

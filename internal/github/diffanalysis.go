@@ -10,6 +10,7 @@ import (
 	gh "github.com/google/go-github/v72/github"
 
 	"github.com/openarbiter/arbiter/internal/model"
+	"github.com/openarbiter/arbiter/internal/patterns"
 	"github.com/openarbiter/arbiter/internal/store"
 )
 
@@ -132,6 +133,12 @@ func AnalyzeDiff(files []PRFileInfo) DiffInsights {
 		if isBinaryFile(lower) {
 			insights.BinaryFiles = true
 			insights.Flags = append(insights.Flags, fmt.Sprintf("binary file: %s", f.Filename))
+		}
+
+		// Homoglyph filename detection — Cyrillic/Greek chars in filenames
+		if normalized := patterns.NormalizeConfusables(f.Filename); normalized != f.Filename {
+			insights.Flags = append(insights.Flags,
+				fmt.Sprintf("homoglyph filename: %s (normalizes to: %s) — possible Trojan Source attack", f.Filename, normalized))
 		}
 	}
 
@@ -404,8 +411,13 @@ func isCIFile(path string) bool {
 
 func isDepsFile(path string) bool {
 	deps := []string{"go.mod", "go.sum", "package.json", "package-lock.json", "yarn.lock",
-		"requirements.txt", "pipfile", "gemfile", "cargo.toml", "cargo.lock",
-		"pom.xml", "build.gradle", "composer.json"}
+		"pnpm-lock.yaml", "requirements.txt", "pipfile", "pipfile.lock",
+		"gemfile", "gemfile.lock", "cargo.toml", "cargo.lock",
+		"pom.xml", "build.gradle", "composer.json", "composer.lock",
+		"poetry.lock", "pyproject.toml",
+		// Package manager configs that control package sources
+		"pip.conf", ".npmrc", ".yarnrc", ".yarnrc.yml",
+	}
 	base := path
 	if idx := strings.LastIndex(path, "/"); idx >= 0 {
 		base = path[idx+1:]
@@ -429,7 +441,7 @@ func isCIAdjacentFile(path string) bool {
 		"package.json", "setup.py", "setup.cfg", "pyproject.toml",
 		"Gemfile", "Rakefile", "Taskfile",
 		"justfile", "Earthfile", "Tiltfile",
-		".pre-commit-config.yaml")
+		".pre-commit-config.yaml", "tox.ini", "noxfile.py")
 }
 
 func isSecurityFile(path string) bool {

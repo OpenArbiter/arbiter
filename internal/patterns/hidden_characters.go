@@ -124,6 +124,15 @@ var ConfusableChars = []struct {
 	{'\u201D', "\"", "right double quotation"},
 	{'\u2018', "'", "left single quotation"},
 	{'\u2019', "'", "right single quotation"},
+	// Greek lowercase (lookalikes for Latin)
+	{'\u03B1', "a", "greek alpha"},   // α → a
+	{'\u03BF', "o", "greek omicron"}, // ο → o
+	{'\u03B5', "e", "greek epsilon"}, // ε → e (approximate)
+	{'\u03B9', "i", "greek iota"},    // ι → i
+	{'\u03BA', "k", "greek kappa"},   // κ → k (approximate)
+	{'\u03BD', "v", "greek nu"},      // ν → v
+	{'\u03C1', "p", "greek rho"},     // ρ → p
+	{'\u03C5', "u", "greek upsilon"}, // υ → u (approximate)
 	// Homoglyph digits
 	{'\u01B5', "2", "latin Z with stroke (looks like 2)"},
 	{'\u03F3', "j", "greek yot"},
